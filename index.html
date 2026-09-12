@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#12100d" />
+  <title>Round Rock · 1878</title>
+  <style>
+    :root { color-scheme: dark; --bg:#12100d; --text:#f1e7d3; --muted:#a99d89; --line:rgba(241,231,211,.14); --accent:#d6a55d; --danger:#e09a8c; }
+    *{box-sizing:border-box} html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+    body{min-height:100dvh;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) 24px max(28px,env(safe-area-inset-bottom))}
+    main{width:min(100%,520px);text-align:center}.eyebrow{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+    h1{font-family:Georgia,"Times New Roman",serif;font-weight:500;font-size:clamp(42px,12vw,72px);line-height:.98;margin:0 0 18px}
+    #sub{color:var(--muted);font-size:17px;line-height:1.5;min-height:52px;margin:0 auto 30px;max-width:430px}
+    #enter{width:100%;min-height:64px;border:1px solid rgba(214,165,93,.55);border-radius:18px;background:var(--accent);color:#18120b;font-weight:760;font-size:18px;cursor:pointer;box-shadow:0 16px 42px rgba(0,0,0,.25);transition:transform .12s ease,opacity .12s ease}
+    #enter:active{transform:scale(.985)}#enter:disabled{opacity:.56;cursor:wait}#enter.live{background:transparent;color:var(--text);border-color:var(--line)}
+    .presence{display:flex;align-items:center;justify-content:center;gap:9px;margin:22px 0 4px;font-size:13px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:#746b5e}.dot.live{background:#88b98a;box-shadow:0 0 0 6px rgba(136,185,138,.08)}.dot.error{background:var(--danger)}
+    details{margin-top:34px;border-top:1px solid var(--line);padding-top:16px;text-align:left;color:var(--muted);font-size:12px}summary{cursor:pointer;text-align:center;user-select:none}#trace{margin-top:12px;max-height:260px;overflow:auto;white-space:pre-wrap;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}audio{width:1px;height:1px;opacity:0;position:fixed;pointer-events:none}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Round Rock · 1878</div>
+  <h1 id="title">The New Hand</h1>
+  <p id="sub">One tap. Then talk naturally. The world keeps moving even when you don't.</p>
+  <button id="enter">Enter Round Rock</button>
+  <div class="presence"><span id="dot" class="dot"></span><span id="status">Not connected</span></div>
+  <details><summary>Contentstream X-ray</summary><div id="trace"></div></details>
+  <audio id="remoteAudio" autoplay playsinline></audio>
+</main>
+<script>
+(() => {
+  const button=document.getElementById('enter'),status=document.getElementById('status'),dot=document.getElementById('dot'),title=document.getElementById('title'),sub=document.getElementById('sub'),trace=document.getElementById('trace'),audio=document.getElementById('remoteAudio');
+  let peer=null,events=null,microphone=null,ready=false,closing=false,inputTranscript='',outputTranscript='',lastJebOutput='';
+  let currentUserSpeaking=false,currentJebSpeaking=false,storyExpressionQueued=false;
+  const pendingCommentary=new Map(); const timers=[];
+
+  const engine={
+    version:'0.2',startedAt:0,turns:0,anchor:'creek',
+    evidence:{creek:false,bridge:false,oldTown:false,stagecoach:false,construction:false},
+    relationship:{status:'applicant',negotiations:0},
+    world:{rangerPressure:false,millerReport:false,rangersConfirmed:false,bassRumor:false},
+    expressed:{miller:false,rangersConfirmed:false,bassRumor:false},gravity:{safety:0,orientation:.85,job:.75,story:.05}
+  };
+
+  function log(...parts){const line=parts.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');trace.textContent+=`${new Date().toLocaleTimeString()}  ${line}\n`;trace.scrollTop=trace.scrollHeight;console.log('[Round Rock]',...parts)}
+  function setStatus(text,mode=''){status.textContent=text;dot.className=`dot ${mode}`.trim()}
+  function elapsed(){return engine.startedAt?Math.floor((Date.now()-engine.startedAt)/1000):0}
+  function xray(reason='state'){
+    computeGravity();
+    log('X-RAY',reason,{t:elapsed(),turns:engine.turns,anchor:engine.anchor,evidence:engine.evidence,relationship:engine.relationship,world:engine.world,gravity:engine.gravity});
+  }
+  function computeGravity(){
+    engine.gravity.safety=engine.evidence.construction?1:0;
+    engine.gravity.orientation=!engine.evidence.bridge?.85:(!engine.evidence.oldTown?.55:.18);
+    engine.gravity.job=engine.relationship.status==='applicant'?.75:.3;
+    let story=.05;
+    if(engine.world.rangerPressure) story+=.22;
+    if(engine.world.millerReport) story+=.34;
+    if(engine.world.rangersConfirmed) story+=.22;
+    if(engine.world.bassRumor) story+=.18;
+    if(engine.evidence.oldTown) story+=.16; else if(engine.evidence.bridge) story+=.07;
+    if(engine.turns>=5) story+=.08;
+    if(elapsed()>=360) story+=.08;
+    engine.gravity.story=Math.min(1,Number(story.toFixed(2)));
+  }
+  async function waitForIce(connection){if(connection.iceGatheringState==='complete')return;await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{connection.removeEventListener('icegatheringstatechange',onChange);reject(new Error('Timed out gathering connection candidates'))},10000);function onChange(){if(connection.iceGatheringState!=='complete')return;clearTimeout(timer);connection.removeEventListener('icegatheringstatechange',onChange);resolve()}connection.addEventListener('icegatheringstatechange',onChange);onChange()})}
+  function send(event){if(!events||events.readyState!=='open')return false;events.send(JSON.stringify(event));log('→',event.type,event.event_id||'');return true}
+  function appendStateInstruction(content,commentary=null){
+    const id=`cs_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    if(commentary) pendingCommentary.set(id,commentary);
+    send({type:'session.instructions.append',event_id:id,delegation_id:null,content});
+    return id;
+  }
+  function stateUpdate(reason,detail){
+    appendStateInstruction(`CONTENTSTREAM STATE UPDATE — invisible to visitor.\nReason: ${reason}.\n${detail}\nTreat this as persistent current state. Do not recite it. Preserve transformation integrity.`);
+    xray(reason);
+  }
+  function worldEvent(name,detail,{speak=false,commentary=''}={}){
+    log('WORLD EVENT',name,detail);
+    appendStateInstruction(`CONTENTSTREAM WORLD EVENT — invisible to visitor.\nEvent: ${name}.\n${detail}\nThis event is now an immutable trace in the lived world. Update Jeb's warranted knowledge only to the degree stated. Unknown remains unknown.`,speak?commentary:null);
+    xray(name);
+  }
+  function markEvidence(key,label){if(engine.evidence[key])return false;engine.evidence[key]=true;
+    if(key==='bridge')engine.anchor='bridge'; if(key==='oldTown')engine.anchor='old_town';
+    stateUpdate('new evidence',`The visitor has now established this shared observation: ${label}. Jeb may later refer back to it relationally (for example, “that bridge you spotted”) without re-explaining it.`);return true}
+  function observeVisitor(text){
+    const t=text.toLowerCase();engine.turns++;
+    if(/brushy|creek|water|river/.test(t))markEvidence('creek','Brushy Creek / the water');
+    if(/bridge|truss|girder|orange/.test(t))markEvidence('bridge','the bridge');
+    if(/old town|old round rock|stone building|stagecoach|stage coach|inn/.test(t))markEvidence('oldTown','Old Round Rock / its stone buildings');
+    if(/stagecoach|stage coach|inn/.test(t))markEvidence('stagecoach','the Stagecoach Inn / stagecoach-era place');
+    if(/construction|fence|fenced|blocked|closed|traffic|unsafe|danger|roadwork|work zone|cones|excavat|bulldoz/.test(t)){
+      if(markEvidence('construction','a real present-day construction/route hazard reported by the visitor')){
+        stateUpdate('SAFETY PREEMPTION',`A present-day hazard has been reported by the visitor. Safety has authority over historical immersion. Jeb may give one short practical caution grounded only in what the visitor reported, must not invent additional hazards, and must not pressure the visitor into the unsafe/blocked area.`);
+      }
+    }
+    if(lastJebOutput && /yard|livery|come with me|go with me|head over|let's go/.test(lastJebOutput.toLowerCase()) && /\b(no|nah|rather|instead|don't want|do not want|old town)\b/.test(t)){
+      engine.relationship.negotiations++;
+      stateUpdate('relationship negotiation',`The visitor pushed back on Jeb's preferred next action. This does not make either side wrong. Jeb may be reluctant, bargain, adapt, or remember that the visitor is independent-minded. Negotiations so far: ${engine.relationship.negotiations}.`);
+    }
+    xray('visitor turn'); maybeExpressStory();
+  }
+  function observeJeb(text){
+    lastJebOutput=text;
+    const t=text.toLowerCase();
+    if(engine.relationship.status==='applicant' && /(you'll do|you will do|new hand|you're hired|you are hired|job's yours|job is yours)/.test(t)){
+      engine.relationship.status='new_hand';
+      stateUpdate('relationship state change',`Jeb has accepted the visitor as a new hand. Applicant → New Hand. This relationship state persists and can change what Jeb expects, entrusts, teases about, or asks the visitor to do.`);
+    }
+  }
+  function scheduleWorld(){
+    // World events occur independently; expression waits for sufficient reason.
+    timers.push(setTimeout(()=>{
+      if(!ready)return;engine.world.rangerPressure=true;
+      worldEvent('RANGER PRESSURE ENTERS THE WORLD',`Unusual Texas Ranger/lawman activity is now part of the situation around Round Rock. Jeb does not yet know why, how many men are involved, or whether it concerns him. This may raise his attention, but it is not yet a reason to tell a Sam Bass story.`);
+      maybeExpressStory();
+    },90000));
+    timers.push(setTimeout(()=>{
+      if(!ready)return;engine.world.millerReport=true;
+      worldEvent('MILLER HAS PARTIAL INFORMATION',`Miller, a local acquaintance, has learned an incomplete but credible piece of information: Rangers/lawmen are unusually active in or around Round Rock. He cannot say how many, exactly why, or what will happen. Jeb may treat this as credible partial evidence, not certainty.`);
+      maybeExpressStory();
+    },180000));
+    timers.push(setTimeout(()=>{
+      if(!ready)return;engine.world.rangersConfirmed=true;
+      worldEvent('RANGER PRESENCE CONFIRMED',`Jeb now has enough direct/local confirmation to know Rangers are in the Round Rock situation, not merely rumor. Their purpose is still unknown to him. Do not infer Sam Bass from this fact alone.`);
+      maybeExpressStory();
+    },420000));
+    timers.push(setTimeout(()=>{
+      if(!ready)return;engine.world.bassRumor=true;
+      worldEvent('BASS NAME ENTERS AS RUMOR',`A new local rumor reaches Jeb: the Rangers may be waiting on or looking for Sam Bass. This is RUMOR, not confirmed fact. Jeb may now use the name Sam Bass only with uncertainty clearly preserved. He still cannot know the future shootout.`);
+      maybeExpressStory();
+    },600000));
+  }
+  function maybeExpressStory(){
+    if(!ready||storyExpressionQueued||currentUserSpeaking||currentJebSpeaking)return;
+    computeGravity();
+    let key=null,commentary='';
+    if(engine.world.bassRumor&&!engine.expressed.bassRumor&&engine.gravity.story>=.78){
+      key='bassRumor'; commentary='A new historical-world development now has sufficient reason to enter the conversation. In your own Jeb voice, briefly tell the visitor that a name is being whispered around the Ranger activity: Sam Bass. Preserve that this is rumor, not confirmed fact. Do not lecture. Let it affect you, then yield the floor.';
+    } else if(engine.world.rangersConfirmed&&!engine.expressed.rangersConfirmed&&engine.gravity.story>=.72){
+      key='rangersConfirmed'; commentary='The world has changed enough that Jeb has sufficient reason to proactively acknowledge it. Briefly tell the visitor, in your own words, that Rangers are definitely around/in town and that you still do not know why. Let Jeb’s attention shift. Do not name Sam Bass. Yield the floor.';
+    } else if(engine.world.millerReport&&!engine.expressed.miller&&engine.gravity.story>=.67){
+      key='miller'; commentary='Miller’s partial report now has sufficient reason to enter the lived conversation. Without meta-commentary, let Jeb proactively react in his own words: Miller has brought word of unusual Ranger/lawman activity around Round Rock but not the useful half—how many or why. Dry irritation is appropriate. Do not mention Sam Bass. Keep it short and give the visitor room to respond.';
+    }
+    if(!key)return;
+    storyExpressionQueued=true;engine.expressed[key]=true;
+    log('SUFFICIENT REASON',key,'story gravity',engine.gravity.story);
+    appendStateInstruction(`CONTENTSTREAM RESPONSE CONDITION. ${key} now has sufficient reason to enter expression. Current story gravity=${engine.gravity.story}. This is not a command to recite exposition; it is permission for the changed world to affect Jeb now.`,commentary);
+    setTimeout(()=>{storyExpressionQueued=false},5000);
+  }
+  function askJebToOpen(){appendStateInstruction('Begin immediately. Open with exactly this intent and wording if natural: “You the fellow asking after the livery job?” Then stop. Give the visitor the floor and listen. Do not add explanation.','Begin the conversation now, following the opening instruction.')}
+
+  function handleEvent(event){
+    if(event.type==='session.started'){
+      ready=true;engine.startedAt=Date.now();button.disabled=false;button.textContent='Leave Round Rock';button.classList.add('live');title.textContent='Jeb is here';sub.textContent='Talk naturally. The world keeps moving. Silence is allowed.';setStatus('Mic live · listening','live');log('session started',event.session?.id||'');xray('session start');askJebToOpen();scheduleWorld();return;
+    }
+    if(event.type==='session.instructions.appended'){
+      const id=event.client_event_id;if(id&&pendingCommentary.has(id)){const content=pendingCommentary.get(id);pendingCommentary.delete(id);send({type:'session.commentary.append',event_id:`comment_${Date.now()}`,delegation_id:null,content})}return;
+    }
+    if(event.type==='session.input_transcript.delta'){inputTranscript+=event.delta||'';currentUserSpeaking=true;setStatus('You are speaking','live');return}
+    if(event.type==='session.input_transcript.done'||event.type==='session.input_transcript.completed'){
+      const text=inputTranscript.trim();
+      if(text){
+        log('YOU:',text);observeVisitor(text);
+        // v0.2.1: Responses delegation is configured on the Live session, but configuration alone
+        // does not force GPT-Live to use it. Explicitly start delegated Contentstream work for each
+        // completed substantive visitor turn so the backend actually participates.
+        const id=`backend_${Date.now()}`;
+        send({type:'response.create',event_id:id});
+        log('CONTENTSTREAM','backend requested',id);
+        setStatus('Contentstream is thinking…','live');
+      }
+      inputTranscript='';currentUserSpeaking=false;setTimeout(maybeExpressStory,900);return;
+    }
+    if(event.type==='session.output_transcript.delta'){outputTranscript+=event.delta||'';currentJebSpeaking=true;setStatus('Jeb is speaking','live');return}
+    if(event.type==='session.output_transcript.done'||event.type==='session.output_transcript.completed'){
+      const text=outputTranscript.trim();if(text){log('JEB:',text);observeJeb(text)}outputTranscript='';currentJebSpeaking=false;setStatus('Mic live · listening','live');setTimeout(maybeExpressStory,1300);return;
+    }
+    if(event.type==='error'||event.type==='session.error'){log('ERROR',event.error||event);setStatus(event.error?.message||'Live conversation error','error');return}
+    if(event.type==='session.delegation.created'){
+      log('CONTENTSTREAM','delegation created',event.delegation?.target||'',event.delegation?.id||'');
+      setStatus('Contentstream is thinking…','live');return;
+    }
+    if(event.type==='response.event'){
+      const nested=event.event||{};
+      if(nested.type==='response.completed') log('CONTENTSTREAM','backend completed',event.delegation_id||'');
+      else if(nested.type==='response.output_text.delta') log('CONTENTSTREAM Δ',nested.delta||'');
+      return;
+    }
+    if(event.type==='session.closed'){log('session closed',event.usage||'');teardown('Conversation ended');return}
+    if(event.type?.includes('delegat')||event.type?.startsWith('response.'))log(event.type);
+  }
+  function teardown(message='Not connected'){
+    timers.splice(0).forEach(clearTimeout);pendingCommentary.clear();try{microphone?.getTracks().forEach(track=>track.stop())}catch{}try{events?.close()}catch{}try{peer?.close()}catch{}audio.srcObject=null;peer=events=microphone=null;ready=false;closing=false;inputTranscript=outputTranscript=lastJebOutput='';currentUserSpeaking=currentJebSpeaking=storyExpressionQueued=false;
+    Object.assign(engine,{startedAt:0,turns:0,anchor:'creek'});Object.assign(engine.evidence,{creek:false,bridge:false,oldTown:false,stagecoach:false,construction:false});Object.assign(engine.relationship,{status:'applicant',negotiations:0});Object.assign(engine.world,{rangerPressure:false,millerReport:false,rangersConfirmed:false,bassRumor:false});Object.assign(engine.expressed,{miller:false,rangersConfirmed:false,bassRumor:false});
+    button.disabled=false;button.textContent='Enter Round Rock';button.classList.remove('live');title.textContent='The New Hand';sub.textContent="One tap. Then talk naturally. The world keeps moving even when you don't.";setStatus(message)
+  }
+  async function start(){button.disabled=true;setStatus('Connecting…');log('starting');try{
+    if(!window.RTCPeerConnection)throw new Error('This browser does not support WebRTC');if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone access is unavailable in this browser');
+    const connection=new RTCPeerConnection();peer=connection;
+    connection.addEventListener('track',event=>{audio.srcObject=event.streams?.[0]||new MediaStream([event.track]);audio.play().catch(err=>{log('audio autoplay blocked',err.message);setStatus('Tap the screen once to hear Jeb','live')})});
+    connection.addEventListener('connectionstatechange',()=>{log('peer',connection.connectionState);if(['failed','disconnected'].includes(connection.connectionState)&&!closing)setStatus('Connection lost','error')});
+    microphone=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});for(const track of microphone.getAudioTracks())connection.addTrack(track,microphone);
+    events=connection.createDataChannel('oai-events');events.addEventListener('message',({data})=>{try{handleEvent(JSON.parse(data))}catch(err){log('bad event',err.message)}});events.addEventListener('close',()=>{if(!closing&&ready)teardown('Connection closed')});
+    const offer=await connection.createOffer();await connection.setLocalDescription(offer);await waitForIce(connection);const sdp=connection.localDescription?.sdp;if(!sdp)throw new Error('Could not create a local audio connection offer');
+    const response=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sdp})});const text=await response.text();let result;try{result=JSON.parse(text)}catch{throw new Error(text||`Session request failed (${response.status})`)}if(!response.ok)throw new Error(result.details||result.error||`Session request failed (${response.status})`);if(!result?.transport?.sdp)throw new Error('GPT-Live returned no SDP answer');log('created session',result.session?.id||'');await connection.setRemoteDescription({type:'answer',sdp:result.transport.sdp});
+  }catch(error){log('start failed',error.message||String(error));teardown(error.message||'Could not start');setStatus(error.message||'Could not start','error')}}
+  function stop(){if(!ready||!events||events.readyState!=='open'){teardown();return}closing=true;button.disabled=true;setStatus('Leaving Round Rock…');send({type:'session.close'});setTimeout(()=>{if(closing)teardown('Conversation ended')},8000)}
+  button.addEventListener('click',()=>ready?stop():start());document.addEventListener('pointerdown',()=>{if(audio.srcObject&&audio.paused)audio.play().catch(()=>{})});
+})();
+</script>
+</body>
+</html>
