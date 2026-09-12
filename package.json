@@ -1,0 +1,12 @@
+{
+  "name": "contentstream-six-questions-resolver",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Model-backed Six Questions resolver and field-event receiver for Round Rock 1878",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
