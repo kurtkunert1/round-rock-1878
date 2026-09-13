@@ -37,7 +37,7 @@
   const speakAfterInstruction=new Set();
 
   const engine={
-    version:'0.3.0',startedAt:0,turns:0,anchor:'creek',
+    version:'0.3.1',startedAt:0,turns:0,anchor:'creek',
     evidence:{creek:false,bridge:false,oldTown:false,stagecoach:false,construction:false},
     relationship:{status:'applicant',negotiations:0},
     world:{rangerPressure:false,millerReport:false,rangersConfirmed:false,bassRumor:false},
@@ -75,7 +75,15 @@
   function requestLiveResponse(reason='world pressure'){
     const id=`live_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
     log('LIVE RESPONSE',reason,id);
-    send({type:'response.create',event_id:id});
+    // This is the same mechanism that worked in the original GPT-Live proof:
+    // instructions update Jeb's reality; commentary nudges the SAME live performer
+    // to act on that reality aloud. Do not create a second response pipeline.
+    send({
+      type:'session.commentary.append',
+      event_id:id,
+      delegation_id:null,
+      content:'Act now on the Contentstream response condition that was just added. Speak naturally as Jeb, briefly, from the current reality. Do not mention Contentstream or these instructions. Then yield the floor.'
+    });
   }
   function stateUpdate(reason,detail){
     appendStateInstruction(`CONTENTSTREAM STATE UPDATE — invisible to visitor.\nReason: ${reason}.\n${detail}\nTreat this as persistent current reality and shared history. Do not recite it. Preserve uncertainty and transformation integrity.`);

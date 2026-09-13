@@ -168,7 +168,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         service: 'round-rock-1878-live-world',
-        contentstream_engine: '0.3.0',
+        contentstream_engine: '0.3.1',
         architecture: 'live-performer-plus-world-state',
         live_model: LIVE_MODEL,
         voice: LIVE_VOICE,
@@ -194,7 +194,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Round Rock live world listening on :${PORT}`);
-  console.log(`Engine 0.3.0 — GPT-Live is Jeb; Contentstream changes reality`);
+  console.log(`Engine 0.3.1 — GPT-Live is Jeb; Contentstream changes reality`);
   console.log(`Live model: ${LIVE_MODEL}; voice: ${LIVE_VOICE}`);
   console.log(`OPENAI_API_KEY configured: ${Boolean(OPENAI_API_KEY)}`);
 });

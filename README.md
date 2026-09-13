@@ -1,4 +1,4 @@
-# Round Rock 1878 — Live World v0.3.0
+# Round Rock 1878 — Live World v0.3.1
 
 ## Architecture reset
 
@@ -21,6 +21,10 @@ Check:
 
 Expected engine:
 
-`"contentstream_engine":"0.3.0"`
+`"contentstream_engine":"0.3.1"`
 
 No new API keys or services are required.
+
+
+## 0.3.1 fix
+Restores the proven GPT-Live speech trigger from v0.1: Contentstream appends state/instructions, then `session.commentary.append` nudges the same live Jeb performer to speak. Removed the ineffective `response.create` trigger from 0.3.0.
