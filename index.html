@@ -69,7 +69,7 @@ details{margin-top:24px;border:1px solid var(--line);border-radius:16px;backgrou
 
 <script>
 'use strict';
-const BUILD='field-play-1.4-attention';
+const BUILD='field-play-1.4.1-attention-compat';
 const OPENING_LINE="There you are. Come on—move. Rangers just rode in off the Austin road. I’ve been following them for news, but there’s one man with them I’d rather not have see me. You’re my new hand, which means right now I need you with me. Across the bridge—Old Town. Come on. We gotta hide.";
 const DEFAULT_RESOLVER='https://round-rock-1878.onrender.com/resolve';
 const RESOLVER_KEY='rr1878_six_questions_resolver';
@@ -276,15 +276,11 @@ function payloadFor(raw){
       turn:turnNumber,
       conversation_history:conversation.slice(-12),
       prior_resolutions:priorResolutions.slice(-6),
-      attention_model:attentionState,
       registered_context:[
-        `CHARACTER ATTENTION BUDGET: ${goalLine}`,
-        `NEWLY DETECTED WORLD SIGNALS THIS TURN: ${detectedLine}`,
-        `RETAINED DETECTED SIGNALS: ${retainedLine}`,
-        'ATTENTION RULE: Presence does not equal detection; detection does not require action. Direct visitor speech is audible, but the depth of Jeb’s response must be proportional to the goal attention it can claim against competing priorities.',
-        'TOPIC PERSISTENCE RULE: A secondary question can receive one useful beat without taking over the scene. Preserve additional relevant material as latent/retained context. Only deepen it if the visitor explicitly keeps pulling and higher-priority goals permit.',
-        'INTERRUPTION RULE: A newly detected higher-priority world signal may interrupt, shorten, or defer a lower-priority conversational thread. Do not force an interruption when no signal was detected.',
-        'EXPRESSION RULE: Jeb acts from his primary purpose while remaining capable of noticing and retaining signals relevant to secondary goals. Do not dump everything he knows just because a topic became relevant.',
+        `JEB ATTENTION NOW: ${goalLine}`,
+        `WORLD SIGNALS DETECTED NOW: ${detectedLine}`,
+        `DETECTED AND RETAINED: ${retainedLine}`,
+        'Attention rule: Jeb hears direct speech, but secondary topics get only a useful beat unless the visitor keeps pulling and competing higher-priority goals allow more. A detected higher-priority world signal may interrupt or defer a lower-priority thread. Detection does not require immediate action.',
         'This is a Round Rock 1878 historical field-play experiment. The Six Questions resolve each visitor contribution; there is no predetermined scene sequence.',
         'The participant begins near the top of Chisholm Trail Crossing Park with the iron bridge directly ahead; crossing the bridge leads toward Old Town. A well is nearby at the top of the park.',
         'Opening event: Jeb arrives breathless after following Rangers for news. He reports Rangers have ridden in off the Austin road and urges the participant, his newly hired hand, across the bridge toward Old Town to get out of sight.',
