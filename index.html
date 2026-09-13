@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#12100d" />
+  <title>Round Rock · 1878 · Historical Slice</title>
+  <style>
+    :root{color-scheme:dark;--bg:#12100d;--panel:#1b1813;--text:#f1e7d3;--muted:#a99d89;--line:rgba(241,231,211,.14);--accent:#d6a55d;--danger:#e09a8c;--live:#88b98a}
+    *{box-sizing:border-box} html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+    body{min-height:100dvh;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) 24px max(28px,env(safe-area-inset-bottom))}
+    main{width:min(100%,560px);text-align:center}.eyebrow{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+    h1{font-family:Georgia,"Times New Roman",serif;font-weight:500;font-size:clamp(40px,11vw,68px);line-height:.98;margin:0 0 18px}
+    #sub{color:var(--muted);font-size:17px;line-height:1.5;min-height:52px;margin:0 auto 26px;max-width:460px}
+    #enter{width:100%;min-height:64px;border:1px solid rgba(214,165,93,.55);border-radius:18px;background:var(--accent);color:#18120b;font-weight:760;font-size:18px;cursor:pointer;box-shadow:0 16px 42px rgba(0,0,0,.25)}
+    #enter:disabled{opacity:.56;cursor:wait}#enter.live{background:transparent;color:var(--text);border-color:var(--line)}
+    .presence{display:flex;align-items:center;justify-content:center;gap:9px;margin:22px 0 4px;font-size:13px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:#746b5e}.dot.live{background:var(--live);box-shadow:0 0 0 6px rgba(136,185,138,.08)}.dot.error{background:var(--danger)}
+    details{margin-top:30px;border-top:1px solid var(--line);padding-top:16px;text-align:left;color:var(--muted);font-size:12px}summary{cursor:pointer;text-align:center;user-select:none}
+    .state{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);line-height:1.5}.state b{color:var(--text)}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px}.controls button{padding:10px 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font-size:12px}.controls button:disabled{opacity:.38}
+    #trace{margin-top:12px;max-height:220px;overflow:auto;white-space:pre-wrap;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}audio{width:1px;height:1px;opacity:0;position:fixed;pointer-events:none}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Round Rock · 1878</div>
+  <h1 id="title">The New Hand</h1>
+  <p id="sub">Historical slice: meet Jeb, feel the pressure change, cross toward Old Town.</p>
+  <button id="enter">Enter Round Rock</button>
+  <div class="presence"><span id="dot" class="dot"></span><span id="status">Not connected</span></div>
+  <details>
+    <summary>Contentstream x-ray · v0.5.0</summary>
+    <div id="state" class="state"></div>
+    <div class="controls">
+      <button id="bridgeSeen">Bridge in sight</button>
+      <button id="bridgeCrossed">Bridge crossed</button>
+      <button id="oldTown">Old Town reached</button>
+      <button id="millerBeat">Miller / Murphy beat</button>
+      <button id="rangerNow">Inject Ranger word now</button>
+      <button id="pressureNow">Increase pressure now</button>
+    </div>
+    <div id="trace"></div>
+  </details>
+  <audio id="remoteAudio" autoplay playsinline></audio>
+</main>
+<script>
+(() => {
+  const el = id => document.getElementById(id);
+  const button=el('enter'), status=el('status'), dot=el('dot'), title=el('title'), sub=el('sub'), trace=el('trace'), audio=el('remoteAudio'), stateEl=el('state');
+  const controls={bridgeSeen:el('bridgeSeen'),bridgeCrossed:el('bridgeCrossed'),oldTown:el('oldTown'),millerBeat:el('millerBeat'),rangerNow:el('rangerNow'),pressureNow:el('pressureNow')};
+  let peer=null, events=null, microphone=null, ready=false, closing=false, greetingInstructionId=null, inputTranscript='', outputTranscript='', timers=[];
+
+  const world={
+    elapsed:0,
+    location:'start near Brushy Creek',
+    scene:'meeting the new hand',
+    rangerLevel:0,
+    rangerWord:false,
+    bridgeSeen:false,
+    bridgeCrossed:false,
+    oldTown:false,
+    millerBeat:false,
+    murphySeen:false,
+    jebGoal:'assess the new hand; then see Miller in Old Town',
+    unknowns:['why Rangers are active','how many Rangers','whether Sam Bass is involved']
+  };
+
+  function log(...parts){const line=parts.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');trace.textContent+=`${new Date().toLocaleTimeString()}  ${line}\n`;trace.scrollTop=trace.scrollHeight;console.log('[Round Rock]',...parts)}
+  function setStatus(text,mode=''){status.textContent=text;dot.className=`dot ${mode}`.trim()}
+  function renderState(){
+    const pressure=['ordinary','attention','concern','priority shift','urgent to finish and move'][world.rangerLevel]||'unknown';
+    stateEl.innerHTML=`<b>Scene:</b> ${world.scene}<br><b>Place:</b> ${world.location}<br><b>Ranger pressure:</b> ${pressure}<br><b>Jeb wants:</b> ${world.jebGoal}<br><b>Still unknown:</b> ${world.unknowns.join('; ')}`;
+    controls.bridgeSeen.disabled=world.bridgeSeen; controls.bridgeCrossed.disabled=world.bridgeCrossed; controls.oldTown.disabled=world.oldTown; controls.millerBeat.disabled=world.millerBeat;
+  }
+  function send(event){if(!events||events.readyState!=='open')return false;events.send(JSON.stringify(event));log('→',event.type,event.event_id||'');return true}
+  async function waitForIce(connection){if(connection.iceGatheringState==='complete')return;await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{connection.removeEventListener('icegatheringstatechange',onChange);reject(new Error('Timed out gathering connection candidates'))},10000);function onChange(){if(connection.iceGatheringState!=='complete')return;clearTimeout(timer);connection.removeEventListener('icegatheringstatechange',onChange);resolve()}connection.addEventListener('icegatheringstatechange',onChange);onChange()})}
+
+  function appendWorld(label, content){
+    if(!ready){log('WORLD skipped; session not ready',label);return false}
+    const ok=send({type:'session.instructions.append',event_id:`world_${Date.now()}_${Math.random().toString(16).slice(2)}`,delegation_id:null,content:`CONTENTSTREAM WORLD UPDATE — AUTHORITATIVE CURRENT REALITY\n${content}\nDo not announce this update merely because it arrived. Do not invent missing facts. Let it alter Jeb only when it changes what is valid or important now.`});
+    if(ok){log('WORLD:',label);renderState()} return ok;
+  }
+
+  function initialWorld(){
+    appendWorld('slice initialized',`The historical play has begun. The visitor is the possible new hand Jeb came to meet near Brushy Creek. Jeb still needs to see Miller in Old Town before getting back to his own business. This is an ordinary working moment at first. Jeb may ask enough to size up the new hand, but he should not conduct a long interview. The bridge across Brushy Creek is the practical route toward Old Town. No Ranger urgency is yet warranted.`)
+  }
+
+  function rangerWord(){
+    if(world.rangerWord)return;
+    world.rangerWord=true; world.rangerLevel=Math.max(world.rangerLevel,1); world.scene='ordinary business interrupted by Ranger word';
+    world.jebGoal='finish with the new hand, find Miller, and avoid being caught flat-footed if trouble develops';
+    appendWorld('Ranger word reaches Jeb',`Word has reached Jeb that Texas Rangers are active in or coming into the Round Rock situation. Jeb knows Ranger culture from his own past and is wary of being pulled back into armed trouble. He does NOT know why they are here, how many there are, or whether Sam Bass is involved. This changes his attention first, not into panic. His unfinished obligation to Miller in Old Town now matters more because he wants to complete it and get ahead of whatever is developing.`)
+  }
+
+  function pressureStep(){
+    if(!world.rangerWord) rangerWord();
+    if(world.rangerLevel>=4)return;
+    world.rangerLevel++;
+    const texts={
+      2:'Enough time has passed without the uncertainty resolving that Jeb is now concerned. He still has no new historical facts. The same unknown Ranger activity has gained gravity because he is still away from his business and still has not dealt with Miller.',
+      3:'The unresolved Ranger situation now creates a priority shift. Jeb increasingly wants to stop lingering, get to Miller in Old Town, and then get back ahead of events. He should remain controlled, not panicked.',
+      4:'Jeb is now strongly motivated to finish the Miller obligation and move. This is urgency produced by competing priorities, not by new certainty. He still may not invent what the Rangers want or name Sam Bass without evidence.'
+    };
+    if(world.rangerLevel>=3) world.jebGoal='get to Miller in Old Town now; then get back ahead of events';
+    appendWorld(`pressure level ${world.rangerLevel}`,texts[world.rangerLevel]);
+  }
+
+  function bridgeSeen(){
+    if(world.bridgeSeen)return; world.bridgeSeen=true; world.location='bridge visible across Brushy Creek'; world.scene='choosing the route toward Old Town';
+    appendWorld('bridge recognized',`The visitor and Jeb can now clearly see the bridge across Brushy Creek. It is the direct practical route toward Old Town and Miller. A path also continues south along the creek, but that takes them away from Jeb's current obligation. If direction comes up, Jeb can prefer the bridge for his own reasons rather than issuing navigation instructions.`)
+  }
+  function bridgeCrossed(){
+    if(world.bridgeCrossed)return; if(!world.bridgeSeen)bridgeSeen(); world.bridgeCrossed=true; world.location='crossing / just across Brushy Creek'; world.scene='moving toward Old Town under growing pressure';
+    appendWorld('bridge crossed',`Jeb and the visitor have crossed the bridge toward Old Town. The physical movement counts as part of the conversation. Jeb does not need to fill the walk with speech. His concern remains unresolved and his next concrete obligation is Miller.`)
+  }
+  function oldTown(){
+    if(world.oldTown)return; if(!world.bridgeCrossed)bridgeCrossed(); world.oldTown=true; world.location='Old Town'; world.scene='looking for Miller while the town feels unsettled';
+    appendWorld('Old Town reached',`Jeb and the visitor are now in Old Town. Jeb's immediate purpose is to find Miller and complete the errand he came for. Ranger activity is still unresolved. Do not explain the whole Bass story. Let Old Town feel like a place where different people may possess different pieces of what is happening.`)
+  }
+  function millerBeat(){
+    if(world.millerBeat)return; if(!world.oldTown)oldTown(); world.millerBeat=true; world.murphySeen=true; world.scene='Miller / Murphy fragment';
+    appendWorld('bounded Miller / Murphy beat',`A bounded historical fragment has entered the scene. Miller is now available to Jeb as the person he meant to see. Nearby, Jim Murphy is present around the feed / horse business and is separated from the men he had been traveling with. Murphy appears occupied and somewhat guarded, but Jeb does NOT know him to be an informer and must not reveal that future meaning. Miller can confirm only that Ranger activity is real and unusual; he does not know or does not provide the full reason. Jeb must not speak for Miller or Murphy. He may react to what he has just witnessed or been told. This scene should leave the visitor with more to wonder about, not a solved explanation.`)
+  }
+
+  function startClock(){
+    clearClock();
+    // Compressed field-test clock. World pressure exists independently of conversation.
+    timers.push(setTimeout(rangerWord,60000));
+    timers.push(setTimeout(pressureStep,150000));
+    timers.push(setTimeout(pressureStep,270000));
+    log('CLOCK: Ranger word at 60s; pressure rises at 150s and 270s unless manually advanced');
+  }
+  function clearClock(){timers.forEach(clearTimeout);timers=[]}
+
+  function askJebToOpen(){
+    greetingInstructionId=`open_${Date.now()}`;
+    send({type:'session.instructions.append',event_id:greetingInstructionId,delegation_id:null,content:'Speak English. Begin immediately without waiting for the visitor. Open with exactly this intent and wording if natural: “You the fellow asking after the livery job?” Then stop. Give the visitor the floor and listen. Do not add explanation.'})
+  }
+  function handleEvent(event){
+    if(event.type==='session.started'){
+      ready=true;button.disabled=false;button.textContent='Leave Round Rock';button.classList.add('live');title.textContent='The play is live';sub.textContent='Jeb performs. Contentstream moves the historical pressure underneath him.';setStatus('Mic live · listening','live');log('session started',event.session?.id||'');initialWorld();startClock();askJebToOpen();return
+    }
+    if(event.type==='session.instructions.appended'&&event.client_event_id===greetingInstructionId){send({type:'session.commentary.append',event_id:`begin_${Date.now()}`,delegation_id:null,content:'Begin the conversation now, following the opening instruction.'});return}
+    if(event.type==='session.input_transcript.delta'){inputTranscript+=event.delta||'';setStatus('You are speaking','live');return}
+    if(event.type==='session.input_transcript.done'||event.type==='session.input_transcript.completed'){if(inputTranscript.trim())log('YOU:',inputTranscript.trim());inputTranscript='';setStatus('Jeb is listening','live');return}
+    if(event.type==='session.output_transcript.delta'){outputTranscript+=event.delta||'';setStatus('Jeb is speaking','live');return}
+    if(event.type==='session.output_transcript.done'||event.type==='session.output_transcript.completed'){if(outputTranscript.trim())log('JEB:',outputTranscript.trim());outputTranscript='';setStatus('Mic live · listening','live');return}
+    if(event.type==='error'||event.type==='session.error'){log('ERROR',event.error||event);setStatus(event.error?.message||'Live conversation error','error');return}
+    if(event.type==='session.closed'){log('session closed',event.usage||'');teardown('Conversation ended');return}
+    if(event.type?.includes('delegat')||event.type?.startsWith('response.'))log(event.type)
+  }
+
+  function resetWorld(){Object.assign(world,{elapsed:0,location:'start near Brushy Creek',scene:'meeting the new hand',rangerLevel:0,rangerWord:false,bridgeSeen:false,bridgeCrossed:false,oldTown:false,millerBeat:false,murphySeen:false,jebGoal:'assess the new hand; then see Miller in Old Town',unknowns:['why Rangers are active','how many Rangers','whether Sam Bass is involved']});renderState()}
+  function teardown(message='Not connected'){clearClock();try{microphone?.getTracks().forEach(t=>t.stop())}catch{}try{events?.close()}catch{}try{peer?.close()}catch{}audio.srcObject=null;peer=null;events=null;microphone=null;ready=false;closing=false;greetingInstructionId=null;inputTranscript='';outputTranscript='';button.disabled=false;button.textContent='Enter Round Rock';button.classList.remove('live');title.textContent='The New Hand';sub.textContent='Historical slice: meet Jeb, feel the pressure change, cross toward Old Town.';setStatus(message);resetWorld()}
+
+  async function start(){button.disabled=true;setStatus('Connecting…');log('starting');try{
+    if(!window.RTCPeerConnection)throw new Error('This browser does not support WebRTC');if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone access is unavailable in this browser');
+    const connection=new RTCPeerConnection();peer=connection;
+    connection.addEventListener('track',event=>{audio.srcObject=event.streams?.[0]||new MediaStream([event.track]);audio.play().catch(err=>{log('audio autoplay blocked',err.message);setStatus('Tap the screen once to hear Jeb','live')})});
+    connection.addEventListener('connectionstatechange',()=>{log('peer',connection.connectionState);if(['failed','disconnected'].includes(connection.connectionState)&&!closing)setStatus('Connection lost','error')});
+    microphone=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});for(const track of microphone.getAudioTracks())connection.addTrack(track,microphone);
+    events=connection.createDataChannel('oai-events');events.addEventListener('message',({data})=>{try{handleEvent(JSON.parse(data))}catch(err){log('bad event',err.message)}});events.addEventListener('close',()=>{if(!closing&&ready)teardown('Connection closed')});
+    const offer=await connection.createOffer();await connection.setLocalDescription(offer);await waitForIce(connection);const sdp=connection.localDescription?.sdp;if(!sdp)throw new Error('Could not create a local audio connection offer');
+    const response=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sdp})});const text=await response.text();let result;try{result=JSON.parse(text)}catch{throw new Error(text||`Session request failed (${response.status})`)}if(!response.ok)throw new Error(result.details||result.error||`Session request failed (${response.status})`);if(!result?.transport?.sdp)throw new Error('GPT-Live returned no SDP answer');
+    log('created session',result.session?.id||'');await connection.setRemoteDescription({type:'answer',sdp:result.transport.sdp});
+  }catch(error){log('start failed',error.message||String(error));teardown(error.message||'Could not start');setStatus(error.message||'Could not start','error')}}
+  function stop(){if(!ready||!events||events.readyState!=='open'){teardown();return}closing=true;button.disabled=true;setStatus('Leaving Round Rock…');send({type:'session.close'});setTimeout(()=>{if(closing)teardown('Conversation ended')},8000)}
+
+  button.addEventListener('click',()=>ready?stop():start());
+  controls.bridgeSeen.addEventListener('click',bridgeSeen);controls.bridgeCrossed.addEventListener('click',bridgeCrossed);controls.oldTown.addEventListener('click',oldTown);controls.millerBeat.addEventListener('click',millerBeat);controls.rangerNow.addEventListener('click',rangerWord);controls.pressureNow.addEventListener('click',pressureStep);
+  document.addEventListener('pointerdown',()=>{if(audio.srcObject&&audio.paused)audio.play().catch(()=>{})});
+  renderState();
+})();
+</script>
+</body>
+</html>
