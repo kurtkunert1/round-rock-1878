@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: round-rock-1878-live
+    runtime: node
+    plan: free
+    buildCommand: echo "No build step"
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: OPENAI_API_KEY
+        sync: false
