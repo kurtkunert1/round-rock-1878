@@ -1,21 +1,14 @@
-# Round Rock 1878 — Live World v0.2.1
+# Round Rock 1878 — Live World v0.2.2
 
-This is the v0.1 GPT-Live proof with the Contentstream world engine restored behind the live conversation.
+Fixes the silent-backend regression in v0.2.1.
 
-What changed:
-- persistent shared-observation state (creek, bridge, Old Town, Stagecoach, reported construction hazard)
-- relationship state and negotiation memory
-- explicit safety preemption
-- deterministic gravity / sufficient-reason diagnostics
-- an independent historical event clock
-- main-story pressure that enters because the world changes, not because Jeb remembers to tell a story
-- partial/uncertain Ranger information first; Sam Bass can enter later as rumor, with uncertainty preserved
-- hidden Contentstream state updates injected into the live session without turning the UI into a control panel
+## What changed
+- Contentstream backend output is accumulated from nested `response.event` text deltas.
+- When the delegated response completes, the result is explicitly returned to GPT-Live with `session.commentary.append` using the same delegation ID. GPT-Live can then paraphrase and speak it aloud.
+- The UI no longer claims “Jeb is speaking” merely because an output transcript exists; it uses the more accurate “Jeb is responding…” state.
+- Existing live voice, Contentstream state, world clock, evidence, safety, and relationship logic are unchanged.
 
-Deployment: replace the existing v0.1 repo contents with these files and redeploy the same Render Web Service. No new environment variables are required. Keep OPENAI_API_KEY.
+## Deploy
+Replace the current repo contents with these files and redeploy the same Render Web Service. Keep the existing `OPENAI_API_KEY`.
 
-Test trace: expand “Contentstream X-ray” in the page if you want to inspect state, event, gravity, and sufficient-reason transitions. The normal visitor does not need to open it.
-
-
-## v0.2.1 fix
-Responses delegation is now explicitly started with `response.create` after each completed visitor turn. OpenAI's GPT-Live docs state that configuring Responses delegation does not itself force the live model to delegate. The UI logs `CONTENTSTREAM backend requested`, `delegation created`, and backend completion so the handoff is visible in the X-ray/log.
+After deploy, `/health` should show `"contentstream_engine":"0.2.2"`.

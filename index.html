@@ -163,7 +163,7 @@
       const text=inputTranscript.trim();
       if(text){
         log('YOU:',text);observeVisitor(text);
-        // v0.2.1: Responses delegation is configured on the Live session, but configuration alone
+        // v0.2.2: Responses delegation is configured on the Live session, but configuration alone
         // does not force GPT-Live to use it. Explicitly start delegated Contentstream work for each
         // completed substantive visitor turn so the backend actually participates.
         const id=`backend_${Date.now()}`;
@@ -173,7 +173,7 @@
       }
       inputTranscript='';currentUserSpeaking=false;setTimeout(maybeExpressStory,900);return;
     }
-    if(event.type==='session.output_transcript.delta'){outputTranscript+=event.delta||'';currentJebSpeaking=true;setStatus('Jeb is speaking','live');return}
+    if(event.type==='session.output_transcript.delta'){outputTranscript+=event.delta||'';currentJebSpeaking=true;setStatus('Jeb is responding…','live');return}
     if(event.type==='session.output_transcript.done'||event.type==='session.output_transcript.completed'){
       const text=outputTranscript.trim();if(text){log('JEB:',text);observeJeb(text)}outputTranscript='';currentJebSpeaking=false;setStatus('Mic live · listening','live');setTimeout(maybeExpressStory,1300);return;
     }
@@ -184,15 +184,46 @@
     }
     if(event.type==='response.event'){
       const nested=event.event||{};
-      if(nested.type==='response.completed') log('CONTENTSTREAM','backend completed',event.delegation_id||'');
-      else if(nested.type==='response.output_text.delta') log('CONTENTSTREAM Δ',nested.delta||'');
+      const delegationId=event.delegation_id||null;
+      if(nested.type==='response.output_text.delta'){
+        const delta=nested.delta||'';
+        if(delegationId&&delta){
+          backendTextByDelegation.set(delegationId,(backendTextByDelegation.get(delegationId)||'')+delta);
+        }
+        log('CONTENTSTREAM Δ',delta);
+        return;
+      }
+      if(nested.type==='response.completed'){
+        let backendText=delegationId?(backendTextByDelegation.get(delegationId)||''):'';
+        if(delegationId) backendTextByDelegation.delete(delegationId);
+        // Defensive fallback: some Responses completion payloads include output text directly.
+        if(!backendText){
+          const outputs=nested.response?.output||[];
+          backendText=outputs.flatMap(item=>item?.content||[]).map(part=>part?.text||part?.output_text||'').join(' ').trim();
+        }
+        log('CONTENTSTREAM','backend completed',delegationId||'',backendText||'(no spoken result)');
+        if(backendText){
+          const spokenId=`backend_speak_${Date.now()}`;
+          send({
+            type:'session.commentary.append',
+            event_id:spokenId,
+            delegation_id:delegationId,
+            content:backendText
+          });
+          log('CONTENTSTREAM','result returned to Jeb voice',spokenId);
+          setStatus('Jeb is responding…','live');
+        } else {
+          setStatus('Mic live · listening','live');
+        }
+        return;
+      }
       return;
     }
     if(event.type==='session.closed'){log('session closed',event.usage||'');teardown('Conversation ended');return}
     if(event.type?.includes('delegat')||event.type?.startsWith('response.'))log(event.type);
   }
   function teardown(message='Not connected'){
-    timers.splice(0).forEach(clearTimeout);pendingCommentary.clear();try{microphone?.getTracks().forEach(track=>track.stop())}catch{}try{events?.close()}catch{}try{peer?.close()}catch{}audio.srcObject=null;peer=events=microphone=null;ready=false;closing=false;inputTranscript=outputTranscript=lastJebOutput='';currentUserSpeaking=currentJebSpeaking=storyExpressionQueued=false;
+    timers.splice(0).forEach(clearTimeout);pendingCommentary.clear();backendTextByDelegation.clear();try{microphone?.getTracks().forEach(track=>track.stop())}catch{}try{events?.close()}catch{}try{peer?.close()}catch{}audio.srcObject=null;peer=events=microphone=null;ready=false;closing=false;inputTranscript=outputTranscript=lastJebOutput='';currentUserSpeaking=currentJebSpeaking=storyExpressionQueued=false;
     Object.assign(engine,{startedAt:0,turns:0,anchor:'creek'});Object.assign(engine.evidence,{creek:false,bridge:false,oldTown:false,stagecoach:false,construction:false});Object.assign(engine.relationship,{status:'applicant',negotiations:0});Object.assign(engine.world,{rangerPressure:false,millerReport:false,rangersConfirmed:false,bassRumor:false});Object.assign(engine.expressed,{miller:false,rangersConfirmed:false,bassRumor:false});
     button.disabled=false;button.textContent='Enter Round Rock';button.classList.remove('live');title.textContent='The New Hand';sub.textContent="One tap. Then talk naturally. The world keeps moving even when you don't.";setStatus(message)
   }
