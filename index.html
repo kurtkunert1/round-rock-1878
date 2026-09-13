@@ -36,7 +36,7 @@
   const pendingCommentary=new Map(); const backendTextByDelegation=new Map(); const timers=[];
 
   const engine={
-    version:'0.2.3',startedAt:0,turns:0,anchor:'creek',
+    version:'0.2.4',startedAt:0,turns:0,anchor:'creek',
     evidence:{creek:false,bridge:false,oldTown:false,stagecoach:false,construction:false},
     relationship:{status:'applicant',negotiations:0},
     world:{rangerPressure:false,millerReport:false,rangersConfirmed:false,bassRumor:false},
@@ -207,10 +207,10 @@
           send({
             type:'session.commentary.append',
             event_id:spokenId,
-            delegation_id:delegationId,
+            delegation_id:null,
             content:backendText
           });
-          log('CONTENTSTREAM','result returned to Jeb voice',spokenId);
+          log('CONTENTSTREAM','result returned to Jeb voice',spokenId,'via session commentary');
           setStatus('Jeb is responding…','live');
         } else {
           setStatus('Mic live · listening','live');

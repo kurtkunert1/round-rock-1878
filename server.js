@@ -228,7 +228,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         service: 'round-rock-1878-live-world',
-        contentstream_engine: '0.2.3',
+        contentstream_engine: '0.2.4',
         live_model: LIVE_MODEL,
         backend_model: BACKEND_MODEL,
         voice: LIVE_VOICE,
