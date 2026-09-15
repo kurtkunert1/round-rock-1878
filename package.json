@@ -1,0 +1,8 @@
+{
+  "name": "contentstream-round-rock-1878-frontend",
+  "version": "1.10.0",
+  "private": true,
+  "description": "Contentstream Round Rock 1878 Field Play 1.10 — Earned Integrity Behaviors",
+  "scripts": {"start": "node server.js"},
+  "engines": {"node": ">=18"}
+}
