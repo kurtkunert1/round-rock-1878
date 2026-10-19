@@ -1566,7 +1566,77 @@ sendBtn.addEventListener('click',()=>{const t=typed.value.trim();if(!t)return;ty
 typed.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();sendBtn.click()}});
 document.getElementById('wait5').addEventListener('click',()=>waitWorld(5));
 document.getElementById('newWorld').addEventListener('click',()=>{worldSeed=Math.floor(Math.random()*1000000000);buildIndependentWorld(worldSeed)});
+// Browser-local run checkpoint (v1). Saves are not a server-authoritative world.
+// Deliberately freeze simulation time while the page is closed.
+const SPARKFIELD_SAVE_KEY='sparkfield.roundrock1878.run.v1';
+function snapshotRun(){
+  const serializedWorld=Object.fromEntries(Object.entries(world).map(([id,actor])=>[
+    id,{origin:actor.origin,plan:actor.plan,knowledge:[...(actor.knowledge||[])],heardReports:actor.heardReports||[]}
+  ]));
+  return {
+    version:1,runId,turnNumber,openingPlayed,jebPresence,actorZone,mapTarget,expressionState,
+    worldSeed,worldElapsedSeconds:worldStartedAt?Math.max(0,Math.floor((Date.now()-worldStartedAt)/1000)):0,
+    worldOffsetMin,worldLastMinute,world:serializedWorld,worldEvents,worldIntersections:[...worldIntersections],
+    conversation:conversation.slice(-30),priorResolutions:priorResolutions.slice(-20),
+    exchangeLedger:exchangeLedger.slice(-80),fieldHistory:fieldHistory.slice(-80),
+    pendingFieldObservations,surfacedFieldObservations:[...surfacedFieldObservations],
+    movementLedger,discoveredZones:[...discoveredZones],storyArea,storyFacts,storyScars,
+    objectMemory,relationshipMemory,lineageLedger,
+    savedAt:new Date().toISOString()
+  };
+}
+function saveRun(){
+  if(resolving)return; // never checkpoint a half-resolved event
+  try{localStorage.setItem(SPARKFIELD_SAVE_KEY,JSON.stringify(snapshotRun()));}
+  catch(err){console.warn('Sparkfield local save failed:',err);}
+}
+function restoreRun(){
+  let snapshot;
+  try{snapshot=JSON.parse(localStorage.getItem(SPARKFIELD_SAVE_KEY)||'null');}
+  catch(err){console.warn('Sparkfield checkpoint unreadable:',err);return false}
+  if(!snapshot||snapshot.version!==1||!snapshot.world||!snapshot.runId)return false;
+  try{
+    runId=snapshot.runId; turnNumber=Number(snapshot.turnNumber)||0;
+    openingPlayed=Boolean(snapshot.openingPlayed);
+    jebPresence=snapshot.jebPresence||'not_here';actorZone=snapshot.actorZone||'park';
+    mapTarget=snapshot.mapTarget||null;expressionState=snapshot.expressionState||'neutral';
+    worldSeed=Number(snapshot.worldSeed)||worldSeed;
+    worldStartedAt=Date.now()-Math.max(0,Number(snapshot.worldElapsedSeconds)||0)*1000;
+    worldOffsetMin=Number(snapshot.worldOffsetMin)||0;
+    worldLastMinute=Number.isFinite(snapshot.worldLastMinute)?snapshot.worldLastMinute:-1;
+    world=Object.fromEntries(Object.entries(snapshot.world).map(([id,actor])=>[
+      id,{origin:actor.origin,plan:actor.plan,knowledge:new Set(actor.knowledge||[]),heardReports:actor.heardReports||[]}
+    ]));
+    for(const id of ['Oattes','JebWorld','Rangers','Riders','Historical'])
+      if(!world[id]||!Array.isArray(world[id].plan))throw Error('incomplete world snapshot');
+    worldEvents=snapshot.worldEvents||[];
+    worldIntersections=new Set(snapshot.worldIntersections||[]);
+    conversation=snapshot.conversation||[];priorResolutions=snapshot.priorResolutions||[];
+    exchangeLedger=snapshot.exchangeLedger||[];
+    fieldHistory=snapshot.fieldHistory||[];
+    pendingFieldObservations=snapshot.pendingFieldObservations||[];
+    surfacedFieldObservations=new Set(snapshot.surfacedFieldObservations||[]);
+    movementLedger=snapshot.movementLedger||[];
+    discoveredZones=new Set(snapshot.discoveredZones||['old_town']);
+    storyArea=snapshot.storyArea||'creek_start';storyFacts=snapshot.storyFacts||storyFacts;
+    storyScars=snapshot.storyScars||[];objectMemory=snapshot.objectMemory||objectMemory;
+    relationshipMemory=snapshot.relationshipMemory||relationshipMemory;
+    lineageLedger=snapshot.lineageLedger||[];
+    turnsEl.innerHTML='';
+    for(const entry of conversation)if(entry&&entry.speaker&&entry.text)addTurn(entry.speaker==='visitor'?'visitor':entry.speaker==='field'?'field':'jeb',entry.text);
+    paused=true;resolving=false;speaking=false;
+    talkBtn.textContent=openingPlayed?'Resume listening':'Begin';
+    pauseBtn.disabled=true;
+    renderMovementLedger();renderFieldMap();renderStoryState();renderProvenance();renderGravity();
+    setStatus('Previous Round Rock visit restored. Press Resume to continue.','live');
+    return true;
+  }catch(err){console.warn('Sparkfield checkpoint restore failed:',err);return false}
+}
+restoreRun();
 startWorld();
+setInterval(saveRun,2000);
+window.addEventListener('pagehide',saveRun);
+clearBtn.addEventListener('click',()=>{localStorage.removeItem(SPARKFIELD_SAVE_KEY);},true);
 
 document.getElementById('saveEndpoint').addEventListener('click',()=>{resolverEndpoint=endpointInput.value.trim()||DEFAULT_RESOLVER;localStorage.setItem(RESOLVER_KEY,resolverEndpoint);connectionNote.textContent='Saved.';testResolver()});
 document.getElementById('testEndpoint').addEventListener('click',testResolver);
