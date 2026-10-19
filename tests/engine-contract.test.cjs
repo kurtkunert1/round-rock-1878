@@ -117,3 +117,25 @@ test('actual ObjectExchange records a report without upgrading it to world truth
 
 // Future executable checks: persistence across restart; negative observation access;
 // conflicting reports; role/refusal state; UI-to-server version consistency.
+
+test('shipped browser script parses as JavaScript', () => {
+  const scripts = [...ui.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/g)];
+  assert.ok(scripts.length, 'expected embedded browser script');
+  for(const match of scripts) new vm.Script(match[1], {filename:'index.html'});
+});
+
+test('checkpoint captures world state and restores knowledge sets', () => {
+  const beginning=ui.indexOf('function snapshotRun()');
+  const ending=ui.indexOf('restoreRun();\\nstartWorld();',beginning);
+  assert.ok(beginning>=0 && ending>beginning);
+  const excerpt=ui.slice(beginning,ending);
+  assert.match(excerpt,/knowledge:\\[\\.\\.\\./);
+  assert.match(excerpt,/knowledge:new Set\\(actor\\.knowledge/);
+  assert.match(excerpt,/exchangeLedger:exchangeLedger/);
+  assert.match(excerpt,/worldOffsetMin/);
+  assert.match(excerpt,/lineageLedger/);
+  assert.match(excerpt,/localStorage\\.setItem\\(SPARKFIELD_SAVE_KEY/);
+  assert.match(excerpt,/localStorage\\.getItem\\(SPARKFIELD_SAVE_KEY/);
+  assert.match(ui,/addEventListener\\('pagehide',saveRun\\)/);
+  assert.match(ui,/localStorage\\.removeItem\\(SPARKFIELD_SAVE_KEY\\)/);
+});
