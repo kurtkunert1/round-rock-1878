@@ -89,5 +89,31 @@ test('provenance includes evidence roots and three distinct clocks', () => {
   assert.match(ui, /function reevaluationQueue\(/);
 });
 
+
+test('actual ObjectExchange records a report without upgrading it to world truth', () => {
+  const start = ui.indexOf('function registerVisitorExchange(raw)');
+  const end = ui.indexOf('\nfunction jebMemorySnapshot()', start);
+  assert.ok(start >= 0 && end > start);
+  const source = ui.slice(start, end);
+  const events = [];
+  const context = {
+    world: {JebWorld: {heardReports:[], knowledge:new Set()}},
+    jebPresence:'present', runId:'test-run', turnNumber:2, exchangeLedger:[],
+    worldTick(){}, worldMinute(){return 12},
+    recordLineage(e){ events.push(e); }, worldLog(){}, Date
+  };
+  vm.createContext(context);
+  vm.runInContext(source + '\nregisterVisitorExchange("I saw Rangers by the creek.");', context, {timeout:1000});
+  const e = context.exchangeLedger[0];
+  assert.ok(e, 'exchange must exist');
+  assert.equal(e.utterance, 'I saw Rangers by the creek.');
+  assert.equal(e.to, 'Jeb');
+  assert.equal(e.transfers[0].truth_status, 'reported-not-established');
+  assert.equal(context.world.JebWorld.heardReports[0].text, e.utterance);
+  assert.equal(context.world.JebWorld.knowledge.size, 0, 'report must not become direct observation');
+  assert.equal(events[0].kind, 'object_exchange');
+  assert.ok(events[0].invariants.includes('report-is-not-world-truth'));
+});
+
 // Future executable checks: persistence across restart; negative observation access;
 // conflicting reports; role/refusal state; UI-to-server version consistency.
