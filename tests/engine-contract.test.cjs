@@ -1,0 +1,93 @@
+'use strict';
+// Sparkfield Round Rock 1878 — verification harness.
+// Run: node --test tests/engine-contract.test.cjs
+// No network, credentials, or model calls required.
+// These tests verify selected concrete contracts; they do not prove full gameplay behavior.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const root = path.resolve(__dirname, '..');
+const ui = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+
+test('server exposes a structured Six Questions resolution contract', () => {
+  for (const field of [
+    'q1_what_happened', 'q2_what_is_this_about',
+    'q3_what_does_this_support', 'q4_what_remains_unknown_or_contested',
+    'q5_what_state_changes_are_justified', 'q6_what_responses_are_now_warranted'
+  ]) assert.match(server, new RegExp(field));
+  assert.match(server, /strict:\s*true/);
+});
+
+test('resolver distinguishes reported speech from established world fact', () => {
+  assert.match(server, /utterance proves that the utterance occurred/i);
+  assert.match(server, /proposition is not automatically true/i);
+  assert.match(ui, /truth_status:'reported-not-established'/);
+});
+
+test('ObjectExchange is registered before resolver expression in visitor flow', () => {
+  const register = ui.indexOf('function registerVisitorExchange(raw)');
+  const ledgerWrite = ui.indexOf('exchangeLedger.push(e)', register);
+  const reportsWrite = ui.indexOf('world.JebWorld.heardReports.push(', register);
+  assert.ok(register >= 0 && ledgerWrite > register && reportsWrite > register);
+  assert.match(ui, /registerVisitorExchange\(/);
+  assert.match(ui, /jebMemorySnapshot\(/);
+  assert.match(ui, /exchangeSummary\(/);
+});
+
+function createWorld(seed) {
+  // Evaluate actual seeded world-builder from the shipped browser source.
+  // Stubs isolate the schedule from DOM, timers, model calls, and effects.
+  const start = ui.indexOf('function seeded(seed)');
+  const end = ui.indexOf('\nfunction worldMinute()', start);
+  assert.ok(start >= 0 && end > start, 'world-builder must exist');
+  const source = ui.slice(start, end);
+  const context = {
+    Math, Date, Set,
+    worldSeed:seed, world:{}, worldEvents:[], worldIntersections:new Set(),
+    worldLastMinute:-1, worldOffsetMin:0, worldStartedAt:null,
+    pendingFieldObservations:[], surfacedFieldObservations:new Set(),
+    worldLog(){}, worldTick(){}
+  };
+  vm.createContext(context);
+  vm.runInContext(source + '\nbuildIndependentWorld(worldSeed);', context, {timeout:1000});
+  return JSON.parse(JSON.stringify(Object.fromEntries(
+    Object.entries(context.world).map(([id, actor]) => [id, actor.plan])
+  )));
+}
+
+test('Rangers, riders, Jeb and Oattes have precommitted worldlines', () => {
+  const world = createWorld(12345);
+  for (const actor of ['JebWorld','Oattes','Rangers','Riders']) {
+    assert.ok(world[actor].length >= 3, actor + ' needs a multi-stage trajectory');
+    for (const leg of world[actor]) assert.ok(leg.end > leg.start);
+  }
+});
+
+test('same seed reproduces trajectories; another seed can change them', () => {
+  const a = createWorld(12345);
+  assert.deepEqual(a, createWorld(12345));
+  assert.notDeepEqual(a, createWorld(67890));
+});
+
+test('world schedules are not triggered by a visitor utterance', () => {
+  const a = createWorld(12345);
+  assert.equal(a.Rangers[1].loc, 'creek');
+  assert.equal(a.Riders[1].loc, 'creek');
+  assert.match(ui, /patrol movement independent of visitor/);
+  assert.match(ui, /movement independent of visitor/);
+});
+
+test('provenance includes evidence roots and three distinct clocks', () => {
+  for (const token of ['event_time', 'observation_time', 'ingestion_time', 'evidence_roots']) {
+    assert.ok(ui.includes(token), 'missing provenance token ' + token);
+  }
+  assert.match(ui, /function recordLineage\(/);
+  assert.match(ui, /function reevaluationQueue\(/);
+});
+
+// Future executable checks: persistence across restart; negative observation access;
+// conflicting reports; role/refusal state; UI-to-server version consistency.
