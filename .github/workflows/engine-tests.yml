@@ -1,0 +1,26 @@
+name: Sparkfield engine verification
+on:
+  push:
+    branches:
+      - 'sparkfield/**'
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'server.js'
+      - 'tests/**'
+      - '.github/workflows/engine-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  engine-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: node --check server.js
+      - name: Run engine contracts (no model/API calls)
+        run: node --test tests/engine-contract.test.cjs
