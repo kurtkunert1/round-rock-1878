@@ -117,7 +117,9 @@ details{margin-top:24px;border:1px solid var(--line);border-radius:16px;backgrou
   <div class="turns" id="turns"></div>
 
   <div class="fallback">
-    <textarea id="typed" placeholder="Type an utterance instead…"></textarea>
+    <div class="controls" role="group" aria-label="Player intent"><button class="big secondary" id="sayMode" type="button" aria-pressed="true">Say</button><button class="big secondary" id="doMode" type="button" aria-pressed="false">Do</button></div>
+    <div class="tiny" id="intentHelp">Say something to someone in the world.</div>
+    <textarea id="typed" placeholder="What do you say?"></textarea>
     <button class="big secondary send" id="sendBtn">Send typed utterance</button>
   </div>
 
@@ -234,6 +236,15 @@ let resolving=false;
 let speaking=false;
 let restartTimer=null;
 let turnNumber=0;
+let playerIntent='say';
+function selectPlayerIntent(intent){
+  playerIntent=intent==='do'?'do':'say';
+  document.getElementById('sayMode').setAttribute('aria-pressed',String(playerIntent==='say'));
+  document.getElementById('doMode').setAttribute('aria-pressed',String(playerIntent==='do'));
+  document.getElementById('intentHelp').textContent=playerIntent==='say'?'Say something to someone in the world.':'Attempt an action. The world decides what happens.';
+  typed.placeholder=playerIntent==='say'?'What do you say?':'What do you try to do?';
+}
+
 let openingPlayed=false;
 let conversation=[];
 let priorResolutions=[];
@@ -280,12 +291,13 @@ let surfacedFieldObservations=new Set();
 function exchangeSummary(limit=10){
   return exchangeLedger.slice(-limit).map(e=>({id:e.id,minute:e.minute,from:e.from,to:e.to,utterance:e.utterance,transfers:e.transfers,status:e.status}));
 }
-function registerVisitorExchange(raw){
+function registerVisitorExchange(raw,intent='say'){
+  intent=intent==='do'?'do':'say';
   worldTick(true);
   const id=`exchange-${runId}-${turnNumber}`;
-  const e={id,minute:worldMinute(),time:new Date().toISOString(),from:'Player',to:jebPresence==='present'?'Jeb':'Environment',utterance:String(raw),transfers:[],status:'registered'};
+  const e={id,minute:worldMinute(),time:new Date().toISOString(),from:'Player',to:intent==='say'&&jebPresence==='present'?'Jeb':'Environment',intent,utterance:String(raw),transfers:[],status:'registered'};
   // A report is persistent evidence that the visitor made the report, not proof that its proposition is true.
-  if(jebPresence==='present'){
+  if(intent==='say'&&jebPresence==='present'){
     e.transfers.push({kind:'heard_report',claim:`Visitor said: ${raw}`,truth_status:'reported-not-established'});
     world.JebWorld.heardReports=world.JebWorld.heardReports||[];
     world.JebWorld.heardReports.push({exchange_id:id,minute:e.minute,text:String(raw)});
@@ -1219,7 +1231,7 @@ function chooseExpressionState(text){
   return 'neutral';
 }
 
-function payloadFor(raw){
+function payloadFor(raw,intent='say'){
   // 1.11.1 experiment: legacy character-gravity / attention-weighted world signals are deliberately disabled.
   // Characters retain purpose, knowledge, relationships and state, but do not own gravity.
   const goalLine='DISABLED — character gravity removed for this experiment';
@@ -1230,6 +1242,7 @@ function payloadFor(raw){
     build:BUILD,
     run_id:runId,
     raw_transcript:raw,
+    input_intent:intent,
     current_context:{
       phase:'bounded_improvised_play',
       turn:turnNumber,
@@ -1329,18 +1342,19 @@ async function speak(text,state='neutral'){
   await new Promise(resolve=>{speaking=true;const u=new SpeechSynthesisUtterance(text),p={urgent:[1.06,.98],wary:[.92,.88],decisive:[1,.90],warm:[.97,.95],neutral:[.94,.92]}[state]||[.94,.92];u.rate=p[0];u.pitch=p[1];u.volume=1;const vs=speechSynthesis.getVoices();u.voice=vs.find(v=>/en-US/i.test(v.lang)&&/male|daniel|alex|tom|aaron|fred/i.test(v.name))||vs.find(v=>/en-US/i.test(v.lang))||vs[0];u.onend=u.onerror=()=>{speaking=false;resolve()};speechSynthesis.cancel();speechSynthesis.speak(u);});
 }
 
-async function resolveUtterance(raw){
+async function resolveUtterance(raw,intent=playerIntent){
+  intent=intent==='do'?'do':'say';
   raw=String(raw||'').trim();
   if(!raw||resolving)return;
   resolving=true;
   stopRecognition();
   turnNumber+=1;
-  const registeredExchange=registerVisitorExchange(raw);
+  const registeredExchange=registerVisitorExchange(raw,intent);
   flushFieldObservations();
   addTurn('visitor',raw);
-  conversation.push({speaker:'visitor',text:raw,time:new Date().toISOString(),exchange_id:registeredExchange.id});
+  conversation.push({speaker:'visitor',intent,text:raw,time:new Date().toISOString(),exchange_id:registeredExchange.id});
   const namedZone=inferZoneFromText(raw);
-  if(namedZone && /\b(?:i am|i'm|i see|here|at|in|reached|arrived|standing)\b/i.test(raw)) actorZone=namedZone;
+  if(intent==='do' && namedZone && /\b(?:i am|i'm|i see|here|at|in|reached|arrived|standing)\b/i.test(raw)) actorZone=namedZone;
   if(jebPresence==='absent'){
     const t=inferMapTarget(raw);
     if(t) mapTarget=t;
@@ -1350,7 +1364,7 @@ async function resolveUtterance(raw){
 
   // No narrator present: movement belongs to Actor State / the field, not Jeb.
   if(jebPresence==='absent'){
-    const fieldResult=handleFieldUtterance(raw);
+    const fieldResult=intent==='do'?handleFieldUtterance(raw):{handled:false};
     if(fieldResult.handled){
       if(fieldResult.kind==='arrival'){
         addTurn('field',`Arrival registered: ${zoneLabel(fieldResult.zone)}.`,`field state · no narrator`);
@@ -1378,7 +1392,7 @@ async function resolveUtterance(raw){
   try{
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),80000);
-    const resp=await fetch(resolverEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadFor(raw)),signal:controller.signal});
+    const resp=await fetch(resolverEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadFor(raw,intent)),signal:controller.signal});
     clearTimeout(timer);
     const data=await resp.json().catch(()=>({}));
     if(!resp.ok)throw new Error(data.error||`HTTP ${resp.status}`);
@@ -1561,7 +1575,9 @@ async function testResolver(){
 
 talkBtn.addEventListener('click',()=>{if(paused)startLoop();else startRecognition()});
 pauseBtn.addEventListener('click',pauseLoop);
-clearBtn.addEventListener('click',()=>{pauseLoop();turnNumber=0;openingPlayed=false;conversation=[];priorResolutions=[];turnsEl.innerHTML='';xray.textContent='No resolution yet.';runId=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));resetAttention();jebPresence='not_here';actorZone='park';mapTarget=null;expressionState='neutral';movementLedger=[];discoveredZones=new Set(['old_town']);fieldHistory=[];storyArea='creek_start';storyFacts={oldTownEntered:false,millerLocated:false,rangerPatternEstablished:false,playerOwnsNextJob:false,creekRevisited:false,eastCrossingReached:false,newTownEntered:false,convergenceMapped:false};storyScars=[];objectMemory={Jeb:{origin:'stable owner / ordinary work day',transitions:[],scars:[],reinforcement:{}},OldTown:{origin:'older settlement',transitions:[],scars:[],reinforcement:{}},BrushyCreek:{origin:'crossing / terrain boundary',transitions:[],scars:[],reinforcement:{}},Player:{origin:'job seeker from San Antonio via Austin',transitions:[],scars:[],reinforcement:{}}};relationshipMemory={'Jeb|Player':{state:'newly acquainted',influence:.35,history:[]},'OldTown|Player':{state:'not entered',influence:.2,history:[]},'BrushyCreek|Player':{state:'present boundary',influence:.45,history:[]}};lineageLedger=[];worldSeed=Math.floor(Math.random()*1000000000);buildIndependentWorld(worldSeed);renderMovementLedger();renderFieldMap();renderStoryState();renderProvenance();talkBtn.textContent='Begin';setStatus('Ready to begin.')});
+clearBtn.addEventListener('click',()=>{pauseLoop();turnNumber=0;openingPlayed=false;conversation=[];priorResolutions=[];turnsEl.innerHTML='';xray.textContent='No resolution yet.';runId=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));selectPlayerIntent('say');resetAttention();jebPresence='not_here';actorZone='park';mapTarget=null;expressionState='neutral';movementLedger=[];discoveredZones=new Set(['old_town']);fieldHistory=[];storyArea='creek_start';storyFacts={oldTownEntered:false,millerLocated:false,rangerPatternEstablished:false,playerOwnsNextJob:false,creekRevisited:false,eastCrossingReached:false,newTownEntered:false,convergenceMapped:false};storyScars=[];objectMemory={Jeb:{origin:'stable owner / ordinary work day',transitions:[],scars:[],reinforcement:{}},OldTown:{origin:'older settlement',transitions:[],scars:[],reinforcement:{}},BrushyCreek:{origin:'crossing / terrain boundary',transitions:[],scars:[],reinforcement:{}},Player:{origin:'job seeker from San Antonio via Austin',transitions:[],scars:[],reinforcement:{}}};relationshipMemory={'Jeb|Player':{state:'newly acquainted',influence:.35,history:[]},'OldTown|Player':{state:'not entered',influence:.2,history:[]},'BrushyCreek|Player':{state:'present boundary',influence:.45,history:[]}};lineageLedger=[];worldSeed=Math.floor(Math.random()*1000000000);buildIndependentWorld(worldSeed);renderMovementLedger();renderFieldMap();renderStoryState();renderProvenance();talkBtn.textContent='Begin';setStatus('Ready to begin.')});
+document.getElementById('sayMode').addEventListener('click',()=>selectPlayerIntent('say'));
+document.getElementById('doMode').addEventListener('click',()=>selectPlayerIntent('do'));
 sendBtn.addEventListener('click',()=>{const t=typed.value.trim();if(!t)return;typed.value='';resolveUtterance(t)});
 typed.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();sendBtn.click()}});
 document.getElementById('wait5').addEventListener('click',()=>waitWorld(5));
@@ -1574,7 +1590,7 @@ function snapshotRun(){
     id,{origin:actor.origin,plan:actor.plan,knowledge:[...(actor.knowledge||[])],heardReports:actor.heardReports||[]}
   ]));
   return {
-    version:1,runId,turnNumber,openingPlayed,jebPresence,actorZone,mapTarget,expressionState,
+    version:1,runId,turnNumber,openingPlayed,jebPresence,actorZone,mapTarget,expressionState,playerIntent,
     worldSeed,worldElapsedSeconds:worldStartedAt?Math.max(0,Math.floor((Date.now()-worldStartedAt)/1000)):0,
     worldOffsetMin,worldLastMinute,world:serializedWorld,worldEvents,worldIntersections:[...worldIntersections],
     conversation:conversation.slice(-30),priorResolutions:priorResolutions.slice(-20),
@@ -1598,6 +1614,7 @@ function restoreRun(){
   try{
     runId=snapshot.runId; turnNumber=Number(snapshot.turnNumber)||0;
     openingPlayed=Boolean(snapshot.openingPlayed);
+    selectPlayerIntent(snapshot.playerIntent||'say');
     jebPresence=snapshot.jebPresence||'not_here';actorZone=snapshot.actorZone||'park';
     mapTarget=snapshot.mapTarget||null;expressionState=snapshot.expressionState||'neutral';
     worldSeed=Number(snapshot.worldSeed)||worldSeed;
