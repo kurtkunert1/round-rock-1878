@@ -77,3 +77,18 @@ test('same seed and same events produce the same causal world record',()=>{
       reports:s.ctx.world.JebWorld.heardReports.map(r=>r.text)};}
   assert.deepEqual(JSON.parse(JSON.stringify(run())),JSON.parse(JSON.stringify(run())));
 });
+
+test('live world positions govern consequence gate observation',()=>{
+  const {decideAction}=require('../engine/consequences.cjs');
+  const run=scenario(12345);
+  let absentMinute=null,presentMinute=null;
+  const where=(name,m)=>run.ctx.world[name].plan.find(p=>m>=p.start&&m<p.end)?.loc;
+  for(let m=0;m<30;m++){const co=where('Rangers',m)==='creek';if(co&&presentMinute===null)presentMinute=m;if(!co&&absentMinute===null)absentMinute=m;}
+  assert.notEqual(absentMinute,null);assert.notEqual(presentMinute,null);
+  const state={minute:absentMinute,actorZone:'creek',world:run.ctx.world,playerKnowledge:[],events:[],appliedIds:[]};
+  assert.equal(decideAction(state,{id:'e-absent',verb:'observe',target:'Rangers'}).status,'rejected');
+  state.minute=presentMinute;
+  const witnessed=decideAction(state,{id:'e-present',verb:'observe',target:'Rangers'});
+  assert.equal(witnessed.status,'accepted');
+  assert.ok(state.playerKnowledge.includes('Rangers observed'));
+});
