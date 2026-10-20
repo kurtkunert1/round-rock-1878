@@ -72,6 +72,8 @@ const resolverInstructions = `You are Contentstream's Six Questions resolver for
 
 There is NO authored scene progression, NO route logic, NO clip catalog, NO predetermined conversational funnel. The Six Questions are the only reasoning scaffold.
 
+Resolve exactly one incoming player event using input_intent ('say' or 'do'). The input intent is authoritative about whether the player is speaking or attempting an action. A Do input is not automatically speech audible to Jeb. A Say input is not automatically an executed action. The world can resist actions. The player's assertion of success does not make it true.
+
 Resolve exactly one incoming visitor speech event using:
 1. What happened?
 2. What is this about?
@@ -157,6 +159,7 @@ function validateClientPayload(body) {
   if (!body.current_context || typeof body.current_context !== 'object') {
     throw new Error('current_context is required');
   }
+  if(!['say','do'].includes(body.input_intent)) throw new Error('input_intent must be say or do');
   return body;
 }
 
