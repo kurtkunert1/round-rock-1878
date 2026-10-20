@@ -29,7 +29,7 @@ test('resolver distinguishes reported speech from established world fact', () =>
 });
 
 test('ObjectExchange is registered before resolver expression in visitor flow', () => {
-  const register = ui.indexOf('function registerVisitorExchange(raw)');
+  const register = ui.indexOf('function registerVisitorExchange(raw,intent='say')');
   const ledgerWrite = ui.indexOf('exchangeLedger.push(e)', register);
   const reportsWrite = ui.indexOf('world.JebWorld.heardReports.push(', register);
   assert.ok(register >= 0 && ledgerWrite > register && reportsWrite > register);
@@ -91,7 +91,7 @@ test('provenance includes evidence roots and three distinct clocks', () => {
 
 
 test('actual ObjectExchange records a report without upgrading it to world truth', () => {
-  const start = ui.indexOf('function registerVisitorExchange(raw)');
+  const start = ui.indexOf('function registerVisitorExchange(raw,intent='say')');
   const end = ui.indexOf('\nfunction jebMemorySnapshot()', start);
   assert.ok(start >= 0 && end > start);
   const source = ui.slice(start, end);
@@ -142,4 +142,29 @@ test('checkpoint captures and restores key run components', () => {
   ]) assert.ok(excerpt.includes(marker), 'missing checkpoint contract: '+marker);
   assert.ok(ui.includes("addEventListener('pagehide',saveRun)"));
   assert.ok(ui.includes('localStorage.removeItem(SPARKFIELD_SAVE_KEY)'));
+});
+
+test('Say and Do affordances are present and intent reaches resolver', () => {
+  assert.ok(ui.includes('id="sayMode"'));
+  assert.ok(ui.includes('id="doMode"'));
+  assert.ok(ui.includes('input_intent:intent'));
+  assert.ok(server.includes("body.input_intent"));
+});
+
+test('Do attempt is not automatically a heard report', () => {
+  const start=ui.indexOf("function registerVisitorExchange(raw,intent='say')");
+  const end=ui.indexOf('\nfunction jebMemorySnapshot()',start);
+  assert.ok(start>=0&&end>start);
+  const source=ui.slice(start,end);
+  const context={
+    world:{JebWorld:{heardReports:[],knowledge:new Set()}},
+    jebPresence:'present',runId:'do-test',turnNumber:1,exchangeLedger:[],
+    worldTick(){},worldMinute(){return 4},recordLineage(){},worldLog(){},Date
+  };
+  vm.createContext(context);
+  vm.runInContext(source+"\nregisterVisitorExchange('I draw my revolver.','do');",context,{timeout:1000});
+  assert.equal(context.exchangeLedger[0].intent,'do');
+  assert.equal(context.exchangeLedger[0].to,'Environment');
+  assert.equal(context.world.JebWorld.heardReports.length,0);
+  assert.equal(context.exchangeLedger[0].status,'registered');
 });
