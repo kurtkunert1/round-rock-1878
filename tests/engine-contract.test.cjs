@@ -29,7 +29,7 @@ test('resolver distinguishes reported speech from established world fact', () =>
 });
 
 test('ObjectExchange is registered before resolver expression in visitor flow', () => {
-  const register = ui.indexOf('function registerVisitorExchange(raw,intent='say')');
+  const register = ui.indexOf("function registerVisitorExchange(raw,intent='say')");
   const ledgerWrite = ui.indexOf('exchangeLedger.push(e)', register);
   const reportsWrite = ui.indexOf('world.JebWorld.heardReports.push(', register);
   assert.ok(register >= 0 && ledgerWrite > register && reportsWrite > register);
@@ -91,7 +91,7 @@ test('provenance includes evidence roots and three distinct clocks', () => {
 
 
 test('actual ObjectExchange records a report without upgrading it to world truth', () => {
-  const start = ui.indexOf('function registerVisitorExchange(raw,intent='say')');
+  const start = ui.indexOf("function registerVisitorExchange(raw,intent='say')");
   const end = ui.indexOf('\nfunction jebMemorySnapshot()', start);
   assert.ok(start >= 0 && end > start);
   const source = ui.slice(start, end);
