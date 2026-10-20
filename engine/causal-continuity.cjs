@@ -1,7 +1,7 @@
 'use strict';
 // Causal-continuity experiment. This is an explicit bounded policy, not proof of
 // general actor autonomy or free-form language understanding.
-const {decideAction}=require('./consequences.cjs');
+const {decideCommitment,applyDecision}=require('./actor-decisions.cjs');
 const location=(world,id,t)=>world[id].plan.find(p=>t>=p.start&&t<p.end)?.loc||'unknown';
 function runContinuity({world,seed,mode,minute,playerZone='creek',warning='Four armed riders near the creek',credibility='unverified'}){
   if(!['control','unheard','received'].includes(mode))throw new Error('bad mode');
@@ -18,17 +18,15 @@ function runContinuity({world,seed,mode,minute,playerZone='creek',warning='Four 
     if(delivered){
       reports.push({id:exchange,claim:warning,truth_status:'reported-not-established',credibility});
       event('heard_report','registered','Jeb heard an unverified player warning',[exchange]);
-      // Bounded decision rule: if a timely report could affect the pending Old
-      // Town errand, defer departure by three minutes to investigate locally.
-      // This is a defeasible commitment response, NOT established threat truth.
-      const leg=cloned.JebWorld.plan;
-      const next=leg.findIndex(p=>p.start>minute);
-      if(next>=0 && next<leg.length-1 && leg[next].loc==='old_town' && credibility!=='known_false'){
-        const delay=3;
-        leg[next-1].end+=delay;leg[next].start+=delay;leg[next].end+=delay;leg[next+1].start+=delay;
-        policy.response='defer next Old Town departure by 3 minutes';
-        event('actor_decision','qualified','Jeb prioritizes checking a timely warning without accepting its truth',[exchange]);
-      }else event('actor_decision','no_change','Warning does not justify modifying pending commitments',[exchange]);
+      const decision=decideCommitment({
+        actor:{id:'JebWorld',inertia:0},
+        commitment:{id:'Old Town errand',priority:2,sensitiveTo:['safety']},
+        signals:[{id:exchange,recipient:'JebWorld',received:true,weight:5,
+          reliability:credibility==='known_false'?0:.8,tags:['safety']}],minute
+      });
+      const applied=applyDecision(cloned,decision,{delay:3});
+      policy.response=applied.status==='qualified'?'defer next Old Town departure by 3 minutes':'keep plan';
+      event('actor_decision',applied.status,decision.reason,decision.evidence_roots);
     }
   }
   const otherUnchanged=['Oattes','Rangers','Riders','Historical'].every(id=>JSON.stringify(initial[id].plan)===JSON.stringify(cloned[id].plan));
