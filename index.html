@@ -190,6 +190,7 @@ const MOVEMENT_AUDIO={
 };
 
 const DEFAULT_RESOLVER='/resolver/resolve';
+const TEXT_FIRST=true; // voice is opt-in, never required for play
 const RESOLVER_KEY='rr1878_six_questions_resolver';
 const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
 const turnsEl=document.getElementById('turns');
@@ -765,7 +766,7 @@ async function applyMovementAfterJebSpeaks(r,responseText){
   const d=movementDeltaFromResolution(r,responseText);
 
   if(d.enteringLivery){
-    await emitMovement({
+    if(!TEXT_FIRST) await emitMovement({
       object:'Jeb',
       from:'outside livery',
       to:'inside livery',
@@ -1336,7 +1337,7 @@ async function logEvent(type,data){
 }
 
 async function speak(text,state='neutral'){
-  if(!text)return; speaking=true;
+  if(TEXT_FIRST||!text)return; speaking=true;
   try{const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,state})});if(!r.ok)throw new Error('voice HTTP '+r.status);const blob=await r.blob(),url=URL.createObjectURL(blob),audio=new Audio(url);await new Promise((ok,bad)=>{audio.onended=ok;audio.onerror=bad;audio.play().catch(bad)});URL.revokeObjectURL(url);speaking=false;return;}catch(e){console.warn('API voice unavailable; browser fallback',e);speaking=false;}
   if(!('speechSynthesis'in window))return;
   await new Promise(resolve=>{speaking=true;const u=new SpeechSynthesisUtterance(text),p={urgent:[1.06,.98],wary:[.92,.88],decisive:[1,.90],warm:[.97,.95],neutral:[.94,.92]}[state]||[.94,.92];u.rate=p[0];u.pitch=p[1];u.volume=1;const vs=speechSynthesis.getVoices();u.voice=vs.find(v=>/en-US/i.test(v.lang)&&/male|daniel|alex|tom|aaron|fred/i.test(v.name))||vs.find(v=>/en-US/i.test(v.lang))||vs[0];u.onend=u.onerror=()=>{speaking=false;resolve()};speechSynthesis.cancel();speechSynthesis.speak(u);});
@@ -1395,7 +1396,7 @@ async function resolveUtterance(raw,intent=playerIntent){
     const resp=await fetch(resolverEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadFor(raw,intent)),signal:controller.signal});
     clearTimeout(timer);
     const data=await resp.json().catch(()=>({}));
-    if(!resp.ok)throw new Error(data.error||`HTTP ${resp.status}`);
+    if(!resp.ok)throw new Error(resp.status===503?'AI resolver unavailable: this preview needs its own API key.':(typeof data.error==='string'?data.error:`HTTP ${resp.status}`));
     renderXray(raw,data);
     priorResolutions.push(compactResolution(data));
     if(priorResolutions.length>12)priorResolutions=priorResolutions.slice(-12);
@@ -1412,7 +1413,7 @@ async function resolveUtterance(raw,intent=playerIntent){
       addTurn('jeb',responseText,`${data.resolution_confidence||'?'} confidence · ${expressionState}`);
       conversation.push({speaker:'jeb',text:responseText,time:new Date().toISOString()});
       if(conversation.length>30)conversation=conversation.slice(-30);
-      setStatus('Jeb is answering…','busy');
+      setStatus('Jeb replies.','live');
       await speak(responseText,expressionState);
       const movementResult=await applyMovementAfterJebSpeaks(data,responseText);
       updatePresenceFromResolution(data,responseText);
@@ -1434,7 +1435,7 @@ async function resolveUtterance(raw,intent=playerIntent){
   }catch(e){
     const msg=e.name==='AbortError'?'Resolver timed out.':String(e.message||e);
     setStatus(msg,'bad');
-    addTurn('jeb','—',msg);
+    addTurn('field',`Unable to resolve this turn: ${msg}`,'system · not a character response');
   }finally{
     resolving=false;
     talkBtn.disabled=false;
@@ -1494,15 +1495,15 @@ async function warmResolver(){
 
 async function startLoop(){
   paused=false;
-  talkBtn.textContent='Listening…';
+  talkBtn.textContent=TEXT_FIRST?'Continue':'Listening…';
   pauseBtn.disabled=false;
 
   // Wake the separate resolver while Jeb performs the opening. Render may need ~50s after sleep.
   // Do not block the opening or the voice path on this network warm-up.
   const resolverWarmPromise=warmResolver();
 
-  // Prime audio from the user's explicit Begin gesture so iOS does not silently block later movement cues.
-  await primeMovementAudio();
+  // Sound is an optional adapter, never a prerequisite for entering the world.
+  if(!TEXT_FIRST) await primeMovementAudio();
 
   if(!openingPlayed){
     openingPlayed=true;
@@ -1541,7 +1542,7 @@ async function startLoop(){
   }
 
   setStatus('Your turn.','live');
-  startRecognition();
+  if(!TEXT_FIRST) startRecognition();
 }
 
 function pauseLoop(){
@@ -1573,12 +1574,12 @@ async function testResolver(){
   }
 }
 
-talkBtn.addEventListener('click',()=>{if(paused)startLoop();else startRecognition()});
+talkBtn.addEventListener('click',()=>{if(paused)startLoop();else if(!TEXT_FIRST)startRecognition()});
 pauseBtn.addEventListener('click',pauseLoop);
 clearBtn.addEventListener('click',()=>{pauseLoop();turnNumber=0;openingPlayed=false;conversation=[];priorResolutions=[];turnsEl.innerHTML='';xray.textContent='No resolution yet.';runId=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2));selectPlayerIntent('say');resetAttention();jebPresence='not_here';actorZone='park';mapTarget=null;expressionState='neutral';movementLedger=[];discoveredZones=new Set(['old_town']);fieldHistory=[];storyArea='creek_start';storyFacts={oldTownEntered:false,millerLocated:false,rangerPatternEstablished:false,playerOwnsNextJob:false,creekRevisited:false,eastCrossingReached:false,newTownEntered:false,convergenceMapped:false};storyScars=[];objectMemory={Jeb:{origin:'stable owner / ordinary work day',transitions:[],scars:[],reinforcement:{}},OldTown:{origin:'older settlement',transitions:[],scars:[],reinforcement:{}},BrushyCreek:{origin:'crossing / terrain boundary',transitions:[],scars:[],reinforcement:{}},Player:{origin:'job seeker from San Antonio via Austin',transitions:[],scars:[],reinforcement:{}}};relationshipMemory={'Jeb|Player':{state:'newly acquainted',influence:.35,history:[]},'OldTown|Player':{state:'not entered',influence:.2,history:[]},'BrushyCreek|Player':{state:'present boundary',influence:.45,history:[]}};lineageLedger=[];worldSeed=Math.floor(Math.random()*1000000000);buildIndependentWorld(worldSeed);renderMovementLedger();renderFieldMap();renderStoryState();renderProvenance();talkBtn.textContent='Begin';setStatus('Ready to begin.')});
 document.getElementById('sayMode').addEventListener('click',()=>selectPlayerIntent('say'));
 document.getElementById('doMode').addEventListener('click',()=>selectPlayerIntent('do'));
-sendBtn.addEventListener('click',()=>{const t=typed.value.trim();if(!t)return;typed.value='';resolveUtterance(t)});
+sendBtn.addEventListener('click',async()=>{const t=typed.value.trim();if(!t)return;typed.value='';if(!openingPlayed)await startLoop();resolveUtterance(t)});
 typed.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();sendBtn.click()}});
 document.getElementById('wait5').addEventListener('click',()=>waitWorld(5));
 document.getElementById('newWorld').addEventListener('click',()=>{worldSeed=Math.floor(Math.random()*1000000000);buildIndependentWorld(worldSeed)});
@@ -1670,7 +1671,7 @@ document.getElementById('newSeed').addEventListener('click',()=>{
 });
 window.addEventListener('beforeunload',stopRecognition);
 
-if(!SpeechRecognition){talkBtn.disabled=true;talkBtn.textContent='Voice unavailable — type below'}
+if(TEXT_FIRST){talkBtn.textContent='Begin';pauseBtn.disabled=true;}else if(!SpeechRecognition){talkBtn.disabled=true;talkBtn.textContent='Voice unavailable — type below'}
 
 
 [
