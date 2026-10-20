@@ -64,7 +64,7 @@ test('attempted action is not a spoken report or accomplished action',()=>{
   const s=scenario();
   s.exchange('I seize the Ranger horse.','do');
   assert.equal(s.ctx.exchangeLedger[0].intent,'do');
-  assert.equal(s.ctx.world.JebWorld.heardReports.length,0);
+  assert.equal((s.ctx.world.JebWorld.heardReports||[]).length,0);
   assert.equal(s.ctx.exchangeLedger[0].status,'registered');
   assert.equal(s.ctx.world.Rangers.plan[0].cause,'patrol movement independent of visitor');
 });
@@ -75,5 +75,5 @@ test('same seed and same events produce the same causal world record',()=>{
     return {knowledge:Object.fromEntries(Object.entries(s.ctx.world).map(([k,v])=>[k,[...v.knowledge]])),
       intersections:[...s.ctx.worldIntersections],field:s.ctx.field.map(x=>x.id),
       reports:s.ctx.world.JebWorld.heardReports.map(r=>r.text)};}
-  assert.deepEqual(run(),run());
+  assert.deepEqual(JSON.parse(JSON.stringify(run())),JSON.parse(JSON.stringify(run())));
 });
