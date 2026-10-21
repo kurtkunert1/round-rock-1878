@@ -13,6 +13,8 @@ const RESOLVE_TIMEOUT_MS = Number(process.env.RESOLVE_TIMEOUT_MS || 70000);
 const VOICE = process.env.JEB_VOICE || 'cedar';
 const TTS_MODEL = process.env.TTS_MODEL || 'gpt-4o-mini-tts';
 const INDEX = path.join(__dirname, 'index.html');
+const PLAY = path.join(__dirname, 'play.html');
+const simulation = require('./engine/simulation.cjs');
 const BUILD = 'field-play-1.10.4-local-resolver';
 
 const evidenceItemSchema = {
@@ -268,6 +270,32 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (req.method === 'GET' && url.pathname === '/play') {
+    res.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+    return fs.createReadStream(PLAY).pipe(res);
+  }
+  if(req.method==='POST' && url.pathname.startsWith('/play/')){
+    try{
+      const body=await readJson(req,1_000_000);
+      let state;
+      if(url.pathname==='/play/start'){
+        state=simulation.createSimulation(Number.isSafeInteger(body.seed)?body.seed:12345);
+      }else{
+        state=simulation.restore(JSON.stringify(body.state));
+        if(url.pathname==='/play/advance'){
+          const minutes=Number(body.minutes);
+          if(!Number.isSafeInteger(minutes)||minutes<1||minutes>10)throw Error('Advance must be 1–10 minutes');
+          simulation.advance(state,state.minute+minutes);
+        }else if(url.pathname==='/play/act'){
+          if(!body.action||!['warn','observe','take'].includes(body.action.verb))throw Error('Unsupported action');
+          if(typeof body.action.text!=='string'||body.action.text.length>1000)throw Error('Invalid action text');
+          simulation.interact(state,body.action);
+        }else if(url.pathname!=='/play/resume')throw Error('Unknown play operation');
+      }
+      return sendJson(req,res,200,{ok:true,state});
+    }catch(e){return sendJson(req,res,400,{ok:false,error:String(e.message||e)});}
+  }
 
   if (req.method === 'GET' && url.pathname === '/health') {
     return sendJson(req,res,200,{ok:true,service:'round-rock-1878-frontend',build:BUILD,voice:VOICE,tts_model:TTS_MODEL,api_key_configured:Boolean(OPENAI_API_KEY),resolver:'local'});
