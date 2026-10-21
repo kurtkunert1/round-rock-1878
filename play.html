@@ -34,11 +34,11 @@ const key='sparkfield-headless-preview-v1', $=id=>document.getElementById(id);
 let state=null,busy=false;
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path,data){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await response.json();if(!response.ok)throw Error(body.error||'Request failed');return body.state;}
-function location(id){const actor=state.world[id];return actor.plan.find(x=>state.minute>=x.start&&state.minute<x.end)?.loc||'elsewhere'}
+function actorLocation(id){const actor=state.world[id];return actor.plan.find(x=>state.minute>=x.start&&state.minute<x.end)?.loc||'elsewhere'}
 function describe(){
  if(!state)return;
  $('clock').textContent='T+'+state.minute;
- $('scene').textContent='You are near Brushy Creek. Jeb is '+location('JebWorld').replaceAll('_',' ')+'. The town continues its own business.';
+ $('scene').textContent='You are near Brushy Creek. Jeb is '+actorLocation('JebWorld').replaceAll('_',' ')+'. The town continues its own business.';
  const recent=state.events.filter(x=>['communication','action_resolution','evidence_created','observation','social_change'].includes(x.kind)).slice(-12);
  $('events').innerHTML=recent.length?recent.map(e=>{
  let t=e.kind==='communication'?'Warning '+e.status+'.':
@@ -67,5 +67,5 @@ $('reset').onclick=()=>{if(confirm('Start a new world?')){localStorage.removeIte
  const saved=localStorage.getItem(key);
  state=saved?await api('/play/resume',{state:JSON.parse(saved)}):await api('/play/start',{seed:12345});
  describe();
-}catch(e){$('notice').textContent=e.message}})();
+}catch(e){$('scene').textContent='World could not start.';$('notice').textContent=e.message}})();
 </script></body></html>
