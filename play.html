@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Round Rock 1878 — Engine Playtest</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#151512;color:#ece7dc}*{box-sizing:border-box}
+body{margin:0}.shell{max-width:650px;margin:auto;padding:24px 18px 40px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #414139;padding-bottom:14px}
+h1{font-size:21px;margin:0;font-weight:650}small,.dim{color:#ada99c}small{font-size:12px}
+#story{padding:26px 0 8px;min-height:170px}#scene{font-size:18px;line-height:1.5}
+#events{border-top:1px solid #414139;padding-top:12px;min-height:100px;max-height:300px;overflow-y:auto}
+.event{font-size:15px;line-height:1.5;padding:7px 0;border-bottom:1px solid #302f29}
+form{margin-top:22px}label{font-size:13px;color:#c9c3b5}.inputs{display:flex;gap:8px;margin:8px 0}
+input,select,button{font:inherit;border-radius:9px;border:1px solid #575347;background:#26251f;color:#f4efe2;padding:11px}
+input{flex:1;min-width:0}button{cursor:pointer}button:hover{background:#38372e}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.actions button{font-size:13px;padding:8px 11px}details{margin-top:30px;color:#aaa495;font-size:13px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;max-height:260px;overflow:auto}
+#notice{font-size:13px;color:#d3bd90;min-height:20px}
+@media(max-width:440px){h1{font-size:18px}.inputs{flex-wrap:wrap}input{flex-basis:100%}}
+</style></head>
+<body><main class="shell"><header><h1>Round Rock · 1878</h1><small id="clock">T+0</small></header>
+<section id="story"><div class="dim" id="scene">Loading the world…</div></section>
+<section id="events" aria-live="polite"></section>
+<form id="command"><label for="text">Your action</label>
+<div class="inputs"><select id="verb" aria-label="Action"><option value="warn">Warn Jeb</option><option value="observe">Observe</option><option value="take">Take</option></select>
+<input id="text" placeholder="What do you say or attempt?" autocomplete="off">
+<button type="submit">Send</button></div></form>
+<div class="actions"><button id="wait">Wait one minute</button><button id="wait5">Wait five minutes</button><button id="reset">New world</button></div>
+<p id="notice" role="status"></p>
+<details><summary>Inspect world state</summary><pre id="state"></pre></details>
+</main>
+<script>
+const key='sparkfield-headless-preview-v1', $=id=>document.getElementById(id);
+let state=null,busy=false;
+const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path,data){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await response.json();if(!response.ok)throw Error(body.error||'Request failed');return body.state;}
+function location(id){const actor=state.world[id];return actor.plan.find(x=>state.minute>=x.start&&state.minute<x.end)?.loc||'elsewhere'}
+function describe(){
+ if(!state)return;
+ $('clock').textContent='T+'+state.minute;
+ $('scene').textContent='You are near Brushy Creek. Jeb is '+location('JebWorld').replaceAll('_',' ')+'. The town continues its own business.';
+ const recent=state.events.filter(x=>['communication','action_resolution','evidence_created','observation','social_change'].includes(x.kind)).slice(-12);
+ $('events').innerHTML=recent.length?recent.map(e=>{
+ let t=e.kind==='communication'?'Warning '+e.status+'.':
+ e.kind==='action_resolution'?'Attempt '+e.status+': '+(e.reason||'no additional reason'):
+ e.kind==='evidence_created'?'A missed delivery left evidence.':
+ e.kind==='observation'?'Someone encountered evidence.':
+ 'A relationship changed after an observation.';
+ return '<div class="event">'+escapeHtml('T+'+e.minute+' · '+t)+'</div>';
+ }).join(''):'<div class="dim">The world has begun. You may act or wait.</div>';
+ $('state').textContent=JSON.stringify({minute:state.minute,player:state.player,actors:state.actors,relationship:state.relationship,evidence:state.evidence,observations:state.observations,events:state.events.slice(-12)},null,2);
+ localStorage.setItem(key,JSON.stringify(state));
+}
+async function action(type,payload={}){
+ if(busy)return;busy=true;$('notice').textContent='Working…';
+ try{state=await api('/play/'+type,{state,...payload});describe();$('notice').textContent='';}
+ catch(e){$('notice').textContent=e.message}
+ finally{busy=false}
+}
+$('command').onsubmit=async e=>{e.preventDefault();const verb=$('verb').value,text=$('text').value.trim();if(!text)return;
+ const target=verb==='observe'?(/rangers/i.test(text)?'Rangers':/riders/i.test(text)?'Riders':'JebWorld'):text;
+ await action('act',{action:{verb,target,text}});$('text').value='';};
+$('wait').onclick=()=>action('advance',{minutes:1});
+$('wait5').onclick=()=>action('advance',{minutes:5});
+$('reset').onclick=()=>{if(confirm('Start a new world?')){localStorage.removeItem(key);action('start',{seed:12345});}};
+(async()=>{try{
+ const saved=localStorage.getItem(key);
+ state=saved?await api('/play/resume',{state:JSON.parse(saved)}):await api('/play/start',{seed:12345});
+ describe();
+}catch(e){$('notice').textContent=e.message}})();
+</script></body></html>
