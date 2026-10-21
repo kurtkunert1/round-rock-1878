@@ -31,7 +31,7 @@ function append(s,event){s.events.push({sequence:s.events.length+1,minute:s.minu
 function interact(s,{verb,target,text,id}){
  if(!id)id='command-'+s.nextCommandId++;
  if(s.commands.some(x=>x.id===id))return {status:'duplicate'};
- const cmd={id,minute:s.minute,verb,target,text:text||null};
+ const cmd={id,minute:s.minute,verb,target:target||null,text:text||null};
  s.commands.push(cmd);
  if(verb==='warn'){
   const contact=location(s,'JebWorld')===s.player.zone;
