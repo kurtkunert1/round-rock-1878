@@ -51,7 +51,12 @@ function interact(s,{verb,target,text,id}){
  return result;
 }
 function tick(s){
+ const prior=s.minute;
  s.minute++;
+ for(const id of ['JebWorld','Oattes','Rangers','Riders']){
+  const from=location(s,id,prior),to=location(s,id,s.minute);
+  if(from!==to)append(s,{kind:'world_movement',actor:id,from,to,evidence_roots:['scheduled:'+id+':'+s.seed]});
+ }
  for(const [id,actor] of Object.entries(s.actors)){
   const before=actor.commitments.filter(c=>c.status==='breached').map(c=>c.id);
   const decisions=step(actor,s.minute);
