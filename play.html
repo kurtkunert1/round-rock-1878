@@ -39,15 +39,16 @@ function describe(){
  if(!state)return;
  $('clock').textContent='T+'+state.minute;
  $('scene').textContent='You are near Brushy Creek. Jeb is '+actorLocation('JebWorld').replaceAll('_',' ')+'. The town continues its own business.';
- const recent=state.events.filter(x=>['communication','action_resolution','evidence_created','observation','social_change'].includes(x.kind)).slice(-12);
+ const recent=state.events.filter(x=>['communication','action_resolution','evidence_created','observation','social_change','world_movement'].includes(x.kind)).slice(-12);
  $('events').innerHTML=recent.length?recent.map(e=>{
  let t=e.kind==='communication'?'Warning '+e.status+'.':
  e.kind==='action_resolution'?'Attempt '+e.status+': '+(e.reason||'no additional reason'):
  e.kind==='evidence_created'?'A missed delivery left evidence.':
  e.kind==='observation'?'Someone encountered evidence.':
+ e.kind==='world_movement'?(e.actor==='JebWorld'?'Jeb':e.actor)+' moved from '+e.from.replaceAll('_',' ')+' to '+e.to.replaceAll('_',' ')+'.':
  'A relationship changed after an observation.';
  return '<div class="event">'+escapeHtml('T+'+e.minute+' · '+t)+'</div>';
- }).join(''):'<div class="dim">The world has begun. You may act or wait.</div>';
+ }).join(''):'<div class="dim">No visible events yet. Independent movements will appear as time advances.</div>';
  $('state').textContent=JSON.stringify({minute:state.minute,player:state.player,actors:state.actors,relationship:state.relationship,evidence:state.evidence,observations:state.observations,events:state.events.slice(-12)},null,2);
  localStorage.setItem(key,JSON.stringify(state));
 }
